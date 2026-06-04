@@ -1,0 +1,13 @@
+{
+  "query": "Show me forecast labor demand by craft for the next 90 days",
+  "expected_skill": "maximo-pm-planning",
+  "expected_behavior": [
+    "Loads maximo-pm-planning (NOT maximo-work-orders — that's WO-level operational, not forecast)",
+    "Uses v_pm_workload_by_craft or maximo.metrics.pm_workload_hours",
+    "Sums JPLABOR.LABORHRS through PM.JPNUM → JOBPLAN reference",
+    "Filters PM.STATUS = 'ACTIVE' and uses COALESCE(EXTDATE, NEXTDATE) for the effective due date",
+    "Expands PMSEQUENCE rows for multi-cadence PMs",
+    "Groups by CRAFT × week (or by CRAFT alone if the user wants a single number)",
+    "Does NOT mix in WORKORDER actuals (those are historical execution, not forecast demand)"
+  ]
+}

@@ -1,5 +1,12 @@
 # Reliability — Gotchas
 
+> **Forward-looking PM analytics** (forecasting, planning, JOBPLAN management,
+> workload-by-craft) lives in [`../maximo-pm-planning/`](../maximo-pm-planning/).
+> This skill covers **backward-looking** PM performance metrics (compliance,
+> time-since-last, MTBF, MTTR). Several gotchas below (EXTDATE coalesce,
+> USETARGETDATE, ACTIVE filter, PMANCESTOR) apply to both skills — they're
+> cross-referenced from `maximo-pm-planning/gotchas.md`.
+
 ## Contents
 
 - 1. MTBF and MTTR have specific Maximo O&G definitions

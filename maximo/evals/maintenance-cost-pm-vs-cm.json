@@ -1,0 +1,12 @@
+{
+  "query": "What's our PM-vs-CM cost ratio for Q3?",
+  "expected_skill": "maximo-maintenance-cost",
+  "expected_behavior": [
+    "Loads maximo-maintenance-cost with maximo-overview as parent",
+    "Calls maximo.metrics.pm_vs_cm_cost_ratio Trusted UDF",
+    "Distinguishes PM-generated WOs by WORKORDER.PMNUM IS NOT NULL (NOT by WORKTYPE='PM' alone — those are different concepts)",
+    "Filters WOCLASS='WORKORDER' (excludes PM/CHANGE/RELEASE/ACTIVITY classes)",
+    "Filters to WOs completed (STATUS IN ('COMP','CLOSE')) in Q3",
+    "Sums labor + material actual cost for both numerator and denominator"
+  ]
+}

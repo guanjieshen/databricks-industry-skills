@@ -1,0 +1,12 @@
+{
+  "query": "Top 10 consumed parts last quarter",
+  "expected_skill": "maximo-inventory",
+  "expected_behavior": [
+    "Loads maximo-inventory with maximo-overview as parent",
+    "Queries MATUSETRANS, not WPMATERIAL (WPMATERIAL is planned, not consumed)",
+    "Filters MATUSETRANS.ISSUETYPE IN ('ISSUE','RETURN') and nets them out — does NOT include TRANSFER or ADJUSTMENT",
+    "Filters TRANSDATE to the last 3 months",
+    "Aggregates by ITEMNUM (with ITEM description joined for readability)",
+    "Returns top 10 by net quantity consumed"
+  ]
+}

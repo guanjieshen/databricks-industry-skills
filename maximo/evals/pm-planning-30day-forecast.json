@@ -1,0 +1,13 @@
+{
+  "query": "Forecast PMs due in the next 30 days",
+  "expected_skill": "maximo-pm-planning",
+  "expected_behavior": [
+    "Loads maximo-pm-planning (NOT maximo-reliability — reliability is backward-looking)",
+    "Loads maximo-overview as parent",
+    "Uses v_pm_forecast or maximo.metrics.pms_due_in_window",
+    "Uses COALESCE(EXTDATE, NEXTDATE) for the effective due date — NOT just NEXTDATE",
+    "Filters PM.STATUS = 'ACTIVE' (inactive/draft PMs don't generate work)",
+    "Expands PMSEQUENCE rows for multi-cadence PMs (does not undercount via COUNT(*) FROM PM alone)",
+    "Filters effective due date to current_date() through current_date() + 30 days"
+  ]
+}
