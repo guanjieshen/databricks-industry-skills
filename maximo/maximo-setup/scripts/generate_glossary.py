@@ -20,14 +20,14 @@ from pathlib import Path
 SKILL_TEMPLATE = """---
 name: {customer}-maximo-glossary
 description: |
-  Customer-specific business-jargon to Maximo schema mappings for {customer_proper}.
-  Use whenever a Maximo-related question uses {customer_proper} business terms
-  (sites, regions, asset classes, custom fields, etc.). Compose with the
-  maximo-* enterprise skills.
-tags:
-  - data-source:ibm-maximo
-  - tier:workspace
-  - customer:{customer}
+  {customer_proper}'s Maximo business glossary — maps {customer_proper} terms
+  ({term_hints}) to Maximo schema (SITEIDs, CLASSSTRUCTUREIDs, status/worktype
+  codes, custom columns) and records their industry and how they use Maximo. Use
+  for ANY Maximo question that uses {customer_proper} business vocabulary. Composes
+  with the maximo-* skills.
+metadata:
+  version: "0.1.0"
+parent: maximo-overview
 ---
 
 # {customer_proper} — Maximo Business Glossary
@@ -132,7 +132,40 @@ def _section_tribal(facts: list[str]) -> str:
     return body + "\n".join(f"- {f}" for f in facts)
 
 
+def _section_industry_usage(iu: dict) -> str:
+    body = "## Industry & Maximo usage\n\n"
+    if not iu:
+        return body + "_(not captured)_"
+    lines = []
+    if iu.get("industry"):
+        lines.append(f"- **Industry:** {iu['industry']}")
+    if iu.get("industry_solutions"):
+        lines.append(f"- **Industry solutions:** {', '.join(iu['industry_solutions'])}")
+    if iu.get("modules_in_use"):
+        lines.append(f"- **Modules used in Maximo:** {', '.join(iu['modules_in_use'])}")
+    if iu.get("modules_elsewhere"):
+        lines.append("- **Handled outside Maximo:** "
+                     + ", ".join(f"{k} ({v})" for k, v in iu["modules_elsewhere"].items()))
+    if iu.get("maintenance_maturity"):
+        lines.append(f"- **Maintenance maturity:** {iu['maintenance_maturity']}")
+    if iu.get("kpis"):
+        lines.append("- **KPIs tracked:** " + "; ".join(iu["kpis"]))
+    for note in iu.get("notes", []):
+        lines.append(f"- {note}")
+    body += "\n".join(lines)
+    body += ("\n\n> Scope answers to this: skip the O&G-only skills (`maximo-integrity`, "
+             "`maximo-hse`) when the industry isn't O&G / no `plusg*` tables.")
+    return body
+
+
+def _term_hints(answers: dict) -> str:
+    """A few real site / asset-class names injected into the description for discovery."""
+    hints = list(answers.get("sites", {}))[:3] + list(answers.get("asset_classes", {}))[:3]
+    return ", ".join(hints) if hints else "sites, regions, asset classes, custom fields"
+
+
 SECTIONS = [
+    ("industry_usage", _section_industry_usage, {}),
     ("sites", _section_sites, {}),
     ("location_hierarchy", _section_hierarchy, {}),
     ("asset_classes", _section_asset_classes, {}),
@@ -155,6 +188,7 @@ def render(answers: dict) -> str:
     return SKILL_TEMPLATE.format(
         customer=customer,
         customer_proper=customer.replace("-", " ").title(),
+        term_hints=_term_hints(answers),
         generated_at=date.today().isoformat(),
         sections=sections,
     )

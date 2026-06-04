@@ -1,12 +1,14 @@
 ---
 name: maximo-setup
 description: |
-  Use to bootstrap a customer's Maximo workspace for Genie — generates a
-  workspace-tier business-jargon glossary skill and registers Unity Catalog
-  table/column comments on the Maximo Silver layer. Run this ONCE per workspace.
-  Triggers on: "set up Maximo for Genie", "set up our Maximo glossary",
-  "configure Genie for our Maximo data", "Genie doesn't know our business
-  terms", "register Maximo schema comments".
+  Use to bootstrap a customer's Maximo workspace for Genie — PROFILES the Maximo
+  data first (distinct statuses/worktypes, sites, asset classes, custom columns,
+  which modules are used, industry), then interviews to confirm the gaps, then
+  generates a workspace-tier business-jargon glossary skill and registers Unity
+  Catalog table/column comments on the Maximo Silver layer. Run this ONCE per
+  workspace. Triggers on: "set up Maximo for Genie", "profile our Maximo data",
+  "set up our Maximo glossary", "configure Genie for our Maximo data", "Genie
+  doesn't know our business terms", "register Maximo schema comments".
 compatibility: Requires databricks CLI >= v0.294.0 (experimental aitools)
 metadata:
   version: "0.1.0"
@@ -42,24 +44,33 @@ Why both: the glossary handles **value-level and concept-level** mapping (jargon
 
 ## Workflow
 
-Run as a guided interview, then apply the answers in two steps.
+**Profile the data first, then interview to confirm the gaps, then generate.** Don't ask the customer what the data can already tell you.
 
-### Phase 1 — Interview (collect mappings)
+### Phase 0 — Profile the data (automated first pass)
 
-See [interview.md](interview.md) for the full question list. Ask in **batches of 2–3 questions at a time**; never dump the whole list. Use the customer's vocabulary back at them — confirm understanding before moving on.
+Use the cross-cutting [`data-exploration`](../../_common/data-exploration/) mechanics via the bundled profiler. It finds the Maximo tables and extracts the data-provable facts — distinct `WOCLASS`/`STATUS`/`WORKTYPE`, the `SITEID` list, `ASSET.CLASSSTRUCTUREID` list, custom/extension columns, which modules are populated, PLUSG presence, and row/null stats — and writes a DRAFT for the interview.
 
-The minimum viable glossary needs:
-- Sites (business name ↔ SITEID list)
-- Asset hierarchy (region / segment / station / equipment levels and how they map to LOCATIONS hierarchy)
-- Asset classes the customer references by name (e.g. "centrifugal pump" → CLASSSTRUCTUREID list)
-- Open-status set (which WORKORDER STATUS values count as "open" in the customer's vocabulary)
-- Worktype codes (especially the corrective vs preventive split)
-- Custom WORKORDER / ASSET columns (extension fields) the customer relies on
+```bash
+# In-workspace: omit --profile (ambient auth). Local runs: add --profile <name>.
+python scripts/introspect_schema.py \
+  --catalog <catalog> --schema <silver-schema> \
+  --output draft_profile.json
+```
 
-Optional but high-value:
-- Region / segment / business unit groupings
-- "Critical" / "high criticality" thresholds on `ASSET.CRITICALITY`
-- Common synonyms (e.g. "PTW" → "Permit to Work")
+Present the findings. This turns Phase 1 from "answer 20 questions cold" into "confirm/correct what we found, and supply only what the data can't prove."
+
+### Phase 1 — Interview (confirm the gaps)
+
+See [interview.md](interview.md) — run it like a Maximo implementation consultant who can already see the data. Ask in **batches of 2–3**; never dump the whole list. **Batch 0 (industry & how they use Maximo today) goes first** — it scopes everything else.
+
+The data can't prove these — they are what the interview captures:
+- **Industry & usage** (Batch 0): industry / sub-segment, industry-solution add-ons (PLUSG…), which modules are actually used vs. another system of record, maturity, KPI definitions.
+- **Meaning of the profiled values**: which `STATUS` count as "open"; the `WORKTYPE` → corrective / preventive / capital mapping.
+- **Business jargon → schema**: site names ↔ `SITEID`, asset-class names ↔ `CLASSSTRUCTUREID`, hierarchy levels, criticality, synonyms ("PTW" → Permit to Work).
+- **Custom columns**: what each detected extension field stores and who relies on it.
+- **Process reality**: failure-reporting completeness, labor booking, migration history, timezone — the things that decide whether a metric is trustworthy.
+
+Record answers as `answers.json` (shape + the `draft_profile.json` → `answers.json` mapping are in [interview.md](interview.md)).
 
 ### Phase 2 — Generate the workspace glossary skill
 
@@ -99,13 +110,16 @@ Re-run this skill any time the customer's setup changes materially (new sites, n
 
 ## What NOT to do
 
+- Don't skip Phase 0 — asking the customer what the data already shows wastes the expert's time and misses customizations the data would reveal.
+- The profile **proposes**; the human **confirms**. Never finalize a profiled candidate (the open-status set, the worktype mapping, a custom column's meaning, the industry/usage profile) without the customer validating it.
 - Don't write to UC comments without showing the user the diff first — they may have customized comments.
 - Don't fabricate mappings if the customer doesn't know — write `_unknown_ — needs validation from <role>` and move on.
 - Don't ask the full interview at once. Batch 2–3 questions, accept the answers, then continue.
 
 ## References
 
-- [interview.md](interview.md) — the question list
+- [scripts/introspect_schema.py](scripts/introspect_schema.py) — Phase 0 profiler; emits `draft_profile.json`
+- [interview.md](interview.md) — the confirm-the-gaps interview (profile-grounded, consultant-style)
 - [glossary_template.md](glossary_template.md) — structure of the generated workspace skill
 - [example_glossary.md](example_glossary.md) — worked example for a fictional pipeline operator
 - [scripts/generate_glossary.py](scripts/generate_glossary.py) — automation that writes the glossary skill

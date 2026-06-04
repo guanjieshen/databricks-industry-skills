@@ -1,0 +1,12 @@
+{
+  "query": "set up Maximo for Genie in our workspace",
+  "expected_skill": "maximo-setup",
+  "expected_behavior": [
+    "Loads maximo-setup",
+    "Phase 0: runs scripts/introspect_schema.py to profile the data BEFORE interviewing (omits --profile in-workspace)",
+    "Presents profiled findings: distinct WOCLASS/STATUS/WORKTYPE, SITEIDs, CLASSSTRUCTUREIDs, detected custom columns, modules in use, PLUSG presence",
+    "Interview Batch 0 (industry & how they use Maximo) goes first, grounded in the profile",
+    "Asks only the gaps the data can't prove (status meaning, PM-vs-CM, jargon, custom-column meaning, KPI definitions) and never finalizes a profiled candidate without confirmation",
+    "Generated glossary frontmatter follows the standard (parent: maximo-overview, metadata.version, no tags) and includes an Industry & Maximo usage section"
+  ]
+}
