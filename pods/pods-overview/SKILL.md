@@ -23,7 +23,7 @@ You are not a PODS specialist out of the box. With this skill loaded, you behave
 
 ## Genie Code tips (apply to every PODS question)
 
-- **Run the CLI with `--profile <profile>`** — each Bash command in Genie Code runs in a *separate* shell, so a bare `export DATABRICKS_CONFIG_PROFILE=...` on its own line does **not** persist. Pass `--profile` on every command, or chain with `&&`.
+- **Auth is ambient in the workspace** — Genie Code is already authenticated to the current workspace, so do **not** pass `--profile` (there's usually no named profile and it would fail). Use `--profile <name>` only when running these skills from a local machine against a `~/.databrickscfg` profile.
 - **Reference tables explicitly** with `@catalog.schema.table` and use **`/findTables`** to locate them — don't guess names.
 - Skills load **only in Agent mode**, and Genie selects them **only by matching their `description`**. If you edit a skill, start a **new chat** for the change to take effect.
 - If `pods-setup` has not been run in this workspace, the physical→PODS column mapping and measure UNITS may be unknown, and analytical skills then produce confident, invisible errors. Offer to run it.

@@ -40,7 +40,7 @@ Run this before merging any new or changed skill. Load
 ## Genie-Code-native value
 - [ ] If the family has a `-setup` skill, it registers UC table/column comments
 - [ ] Canonical metrics ship as Trusted Asset UC functions (`metric_udfs.sql`) where applicable
-- [ ] CLI examples pass `--profile` (separate-shell rule)
+- [ ] CLI examples rely on ambient in-workspace auth (no `--profile`; that's local-only)
 - [ ] MCP tools, if any, are fully qualified (`ServerName:tool_name`)
 
 ## Evals & verification

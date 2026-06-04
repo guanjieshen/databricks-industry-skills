@@ -197,22 +197,21 @@ databricks experimental aitools tools query \
   --profile my-workspace
 ```
 
-## Genie Code-specific tips
+## Auth: in-workspace vs local
 
-Each Bash command in Genie Code runs in a separate shell:
+**Inside the Databricks workspace, Genie Code is already authenticated to the
+current workspace (ambient auth) — do NOT pass `--profile`** (there is usually no
+named profile, and passing one fails). Just run the command:
 
 ```bash
-# ✅ RECOMMENDED — use --profile flag
-databricks experimental aitools tools discover-schema samples.nyctaxi.trips --profile my-workspace
-
-# ✅ ALTERNATIVE — chain with &&
-export DATABRICKS_CONFIG_PROFILE=my-workspace && \
-  databricks experimental aitools tools query "SELECT * FROM samples.nyctaxi.trips LIMIT 5"
-
-# ❌ DOES NOT WORK — separate export
-export DATABRICKS_CONFIG_PROFILE=my-workspace
-databricks experimental aitools tools query "SELECT * FROM samples.nyctaxi.trips LIMIT 5"
+databricks experimental aitools tools discover-schema samples.nyctaxi.trips
 ```
+
+The `--profile <name>` flag shown in the examples above is only for running the
+CLI **locally** (e.g. authoring/testing on a laptop) against a `~/.databrickscfg`
+profile. In that local case only, each Bash command runs in a separate shell, so
+set the profile per command with `--profile` or chain with `&&` — a bare
+`export DATABRICKS_CONFIG_PROFILE=...` on its own line won't persist.
 
 ## Flags
 
@@ -257,7 +256,7 @@ databricks experimental aitools tools query "SELECT * FROM samples.nyctaxi.trips
 2. **Use LIMIT for exploration** on large tables to avoid long-running queries
 3. **JSON output for parsing** — `--output json | jq` for programmatic use
 4. **Check table existence** before querying: `databricks tables get --full-name catalog.schema.table`
-5. **Always specify `--profile`** in Genie Code to avoid authentication issues
+5. **In-workspace, omit `--profile`** (ambient auth); pass it only for local runs against a `~/.databrickscfg` profile
 
 ## Composes with industry skills
 

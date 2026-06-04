@@ -141,8 +141,9 @@ task needs five skills, not so broad it won't activate precisely.
 3. **A workspace glossary skill.** `-setup` generates a workspace-tier skill that
    maps the customer's business jargon to physical schema. This is the
    value-level/concept-level layer UC comments can't capture.
-4. **CLI in Genie Code:** every Bash command runs in a **separate shell** — always
-   pass `--profile <profile>` (a bare `export …` on its own line won't persist).
+4. **CLI auth:** in-workspace Genie Code is already authenticated to the current
+   workspace — **don't** add `--profile`. The `--profile` flag (and the
+   separate-shell caveat) applies only to local runs against `~/.databrickscfg`.
 5. Tell users to reference tables with **`@catalog.schema.table`** and discover with
    **`/findTables`**.
 6. **MCP tools** (if a skill uses them) must be fully qualified: `ServerName:tool_name`.

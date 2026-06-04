@@ -65,8 +65,8 @@ functions by name.
 
 ## Genie Code conventions
 
-- Run the CLI with `--profile <profile>` — each Bash command runs in a separate
-  shell, so a bare `export …` on its own line won't persist.
+- In-workspace, the CLI is already authenticated to the current workspace — don't
+  pass `--profile`. Use it only for local runs against `~/.databrickscfg`.
 - Reference tables with `@catalog.schema.table`; discover with `/findTables`.
 - Skills load only in Agent mode; after editing a skill, start a new chat.
 
