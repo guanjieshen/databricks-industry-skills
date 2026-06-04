@@ -141,17 +141,29 @@ Close with a clear recap of **what was created, where, and the value** — then 
 
 ## Re-running (refresh, not rebuild)
 
-A re-run must be a **delta refresh** that respects prior answers — never a from-scratch re-interview or a blind overwrite.
+A re-run never re-interviews from scratch and never blind-overwrites. When an existing `<customer>-maximo-glossary` is found, **ask the user how they want to re-run** before doing anything else:
 
-1. **Detect:** if `<customer>-maximo-glossary` already exists, this is a refresh; load it as the prior state.
+> "You already have a Maximo glossary from a previous setup. Do you want to:
+> **(a) Delta refresh** — I pick up only what's new or changed since last time, plus anything still flagged `_unknown_`, and leave your confirmed answers as-is; or
+> **(b) Revisit existing answers** — we also walk back through what was confirmed before (sites, statuses, worktypes, asset classes, custom columns…) so you can re-confirm or correct it?"
+
+Default to **(a)** if the user has no preference. **Both** modes re-profile first and **both** merge-and-back-up (never overwrite).
+
+**Shared steps (both modes):**
+1. **Detect & load** the existing glossary as the prior state.
 2. **Re-profile** (Phase 0 — cheap, read-only).
-3. **Diff** the new profile against the existing glossary. Surface only the **delta**: new `SITEID`/`STATUS`/`WORKTYPE` values, new custom columns/tables, values that disappeared — plus anything still flagged `_unknown_` (the **Needs-confirmation** table is the worklist).
-4. **Ask only the delta + open unknowns** — e.g. *"Since last run: new status `X`, new column `Z`; still open: `WPCOND` meaning."* Treat already-confirmed mappings **and manual edits** as authoritative; don't re-ask them.
-5. **Merge, don't overwrite.** `generate_glossary.py` **backs up the existing file to `SKILL.md.bak` first** — merge confirmed deltas into the prior file (preserving manual edits + the follow-up table), don't discard it. Bump `metadata.version`.
-6. **UC comments:** re-apply only for changed/new columns (still preview → `--apply` with approval).
-7. Close with a **"what changed since last run"** summary.
+3. **Diff** the new profile vs the glossary: new `SITEID`/`STATUS`/`WORKTYPE` values, new custom columns/tables, values that disappeared, plus still-open `_unknown_`s (the Needs-confirmation table is the worklist).
 
-Trigger this on: new sites/asset classes/custom columns, or when the customer confirms items from the follow-up worklist.
+**Then, per the chosen mode:**
+- **(a) Delta refresh:** ask only about the diff + open unknowns — *"Since last run: new status `X`, new column `Z`; still open: `WPCOND`."* Treat already-confirmed mappings **and manual edits** as authoritative — don't re-ask them.
+- **(b) Revisit existing answers:** also walk the previously-confirmed mappings and let the user re-confirm or correct each (show the current value, ask "still right?"). Surface manual edits so they're not silently dropped.
+
+**Finish (both):**
+4. **Merge, don't overwrite.** `generate_glossary.py` backs up the existing file to `SKILL.md.bak` first; merge results into the prior file (preserving manual edits + the follow-up table). Bump `metadata.version`.
+5. **UC comments:** re-apply only for changed/new columns (preview → `--apply` with approval).
+6. Close with a **"what changed since last run"** summary.
+
+Trigger a re-run on: new sites/asset classes/custom columns, or when the customer confirms items from the follow-up worklist.
 
 ## What NOT to do
 
