@@ -37,6 +37,7 @@ Currently shipped data-source families:
 | Family | Status | Industries primarily served |
 |---|---|---|
 | [`maximo/`](./maximo/) | v2 in progress | Oil & gas, utilities, mining, manufacturing, federal |
+| [`pods/`](./pods/) | v1 (foundation + ILI flagship) | Midstream oil & gas (pipeline integrity) |
 
 Planned future families (see `_template/`):
 
