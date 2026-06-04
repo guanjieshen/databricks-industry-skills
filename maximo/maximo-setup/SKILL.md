@@ -139,7 +139,19 @@ Close with a clear recap of **what was created, where, and the value** — then 
 
 > Do **not** auto-advance to Genie Space creation. Setup stands on its own; only build the Space when the user asks.
 
-Re-run this skill any time the customer's setup changes materially (new sites, asset classes, custom columns).
+## Re-running (refresh, not rebuild)
+
+A re-run must be a **delta refresh** that respects prior answers — never a from-scratch re-interview or a blind overwrite.
+
+1. **Detect:** if `<customer>-maximo-glossary` already exists, this is a refresh; load it as the prior state.
+2. **Re-profile** (Phase 0 — cheap, read-only).
+3. **Diff** the new profile against the existing glossary. Surface only the **delta**: new `SITEID`/`STATUS`/`WORKTYPE` values, new custom columns/tables, values that disappeared — plus anything still flagged `_unknown_` (the **Needs-confirmation** table is the worklist).
+4. **Ask only the delta + open unknowns** — e.g. *"Since last run: new status `X`, new column `Z`; still open: `WPCOND` meaning."* Treat already-confirmed mappings **and manual edits** as authoritative; don't re-ask them.
+5. **Merge, don't overwrite.** `generate_glossary.py` **backs up the existing file to `SKILL.md.bak` first** — merge confirmed deltas into the prior file (preserving manual edits + the follow-up table), don't discard it. Bump `metadata.version`.
+6. **UC comments:** re-apply only for changed/new columns (still preview → `--apply` with approval).
+7. Close with a **"what changed since last run"** summary.
+
+Trigger this on: new sites/asset classes/custom columns, or when the customer confirms items from the follow-up worklist.
 
 ## What NOT to do
 

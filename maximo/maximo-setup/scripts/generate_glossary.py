@@ -160,9 +160,35 @@ def _section_industry_usage(iu: dict) -> str:
     return body
 
 
+def _section_followups(followups: list) -> str:
+    """The 'who to ask' worklist for every item flagged _unknown_ during the interview."""
+    body = "## Needs confirmation (follow-up contacts)\n\n"
+    if not followups:
+        return body + "_(none captured — all items confirmed)_"
+    rows = []
+    for f in followups:
+        if isinstance(f, dict):
+            rows.append(f"| {f.get('question', '')} | {f.get('owner', '')} |")
+        else:
+            rows.append(f"| {f} |  |")
+    return body + "| Question | Who to ask |\n|---|---|\n" + "\n".join(rows)
+
+
 def _term_hints(answers: dict) -> str:
-    """A few real site / asset-class names injected into the description for discovery."""
-    hints = list(answers.get("sites", {}))[:3] + list(answers.get("asset_classes", {}))[:3]
+    """A few CONFIRMED site / asset-class names for the description (discovery).
+
+    Skip any key carrying an _unknown_/TBD/confirm annotation so the description
+    stays clean (the messy '(_unknown_ …)' labels must not leak into discovery text).
+    """
+    def clean(keys) -> list:
+        out = []
+        for k in keys:
+            kl = k.lower()
+            if "_unknown_" in kl or "tbd" in kl or "confirm" in kl or "(" in k:
+                continue
+            out.append(k)
+        return out
+    hints = clean(answers.get("sites", {}))[:3] + clean(answers.get("asset_classes", {}))[:3]
     return ", ".join(hints) if hints else "sites, regions, asset classes, custom fields"
 
 
@@ -178,6 +204,7 @@ SECTIONS = [
     ("custom_tables", _section_custom_tables, {}),
     ("regulatory_codes", _section_regulatory, []),
     ("tribal_knowledge", _section_tribal, []),
+    ("followups", _section_followups, []),
 ]
 
 
@@ -210,6 +237,12 @@ def main():
 
     rendered = render(answers)
     args.output.parent.mkdir(parents=True, exist_ok=True)
+    if args.output.exists():
+        # Re-run safety: never silently clobber a prior glossary (it may hold
+        # confirmed mappings and manual edits). Back it up first, then merge.
+        backup = args.output.with_suffix(args.output.suffix + ".bak")
+        backup.write_text(args.output.read_text())
+        print(f"backed up existing glossary -> {backup} — review/merge prior confirmations before discarding")
     args.output.write_text(rendered)
     print(f"wrote {args.output} ({len(rendered):,} chars)")
     return 0

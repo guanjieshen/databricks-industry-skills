@@ -119,9 +119,18 @@ The profiler seeds most of this; you confirm. Save as `answers.json` (consumed b
   },
   "custom_tables": { "eam.maximo_silver.pcms_thickness_readings": "Joined to ASSET on assetnum; corrosion gauging" },
   "regulatory_codes": ["API 510", "API 570", "CSA Z662"],
-  "tribal_knowledge": ["'In service' colloquially means STATUS='INPRG', not the asset status"]
+  "tribal_knowledge": ["'In service' colloquially means STATUS='INPRG', not the asset status"],
+  "followups": [
+    {"question": "WPCOND meaning / is it 'open'?", "owner": "Maintenance planners"},
+    {"question": "Official CLASSSTRUCTUREID → asset-class names", "owner": "Reliability"}
+  ]
 }
 ```
+
+> Build `followups` from every item flagged `_unknown_ — confirm with <role>`: each becomes a
+> `{question, owner}` row. It renders as the glossary's follow-up-contacts table and is the
+> worklist a **re-run** walks through. Use the **physical column casing** from the data in all
+> mappings so generated SQL matches.
 
 ### `draft_profile.json` → `answers.json` mapping (what the profiler pre-fills)
 | Profiler field | Interview confirms → answers.json key |

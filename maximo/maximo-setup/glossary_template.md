@@ -115,6 +115,21 @@ Things that have caused confusion in past data work.
 - {{this}}
 {{/each}}
 
+## Needs confirmation (follow-up contacts)
+
+The worklist for every item flagged `_unknown_` during setup — who confirms what.
+This is also the re-run worklist: as items are confirmed, fold them in and remove the row.
+
+| Question | Who to ask |
+|---|---|
+{{#each followups}}
+| {{question}} | {{owner}} |
+{{/each}}
+
+> **Column casing:** write schema identifiers in the **physical casing of the actual
+> tables** (e.g. lowercase `workorder.wo_pipeline_km` if that's how they're stored) so
+> generated SQL matches — don't normalize to upper/lower inconsistently.
+
 ## How to use
 
 When you encounter a business term used by the customer:
