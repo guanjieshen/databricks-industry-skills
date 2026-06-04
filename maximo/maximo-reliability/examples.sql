@@ -155,35 +155,15 @@ LIMIT 100;
 
 
 -- -----------------------------------------------------------------------------
--- 10. Meter-based PM — forecast next due date
+-- (Meter-based PM forecast moved to maximo-pm-planning)
 -- -----------------------------------------------------------------------------
--- Trigger: "when is the next PM due for asset X based on meter reading"
--- Uses the per-day-average pattern Maximo itself uses:
---   forecast_due ≈ LASTREADINGDATE + (FREQUENCY - LASTREADING) / AVERAGE
--- Only meaningful when ASSETMETER.AVERAGE is populated (NULL/0 for new meters).
-SELECT
-    pm.pmnum, pm.siteid, pm.assetnum,
-    pm.frequency, pm.frequnit,
-    am.metername,
-    am.lastreading,
-    am.lastreadingdate,
-    am.average                                          AS avg_per_day,
-    CASE
-        WHEN am.average IS NULL OR am.average <= 0 THEN NULL
-        WHEN pm.frequency - am.lastreading <= 0 THEN current_timestamp()  -- already past
-        ELSE am.lastreadingdate
-             + INTERVAL '1' DAY * ((pm.frequency - am.lastreading) / am.average)
-    END                                                 AS forecast_next_due
-FROM {{catalog}}.{{silver_schema}}.pm pm
-JOIN {{catalog}}.{{silver_schema}}.assetmeter am
-    ON am.assetnum = pm.assetnum AND am.siteid = pm.siteid
-   AND am.__END_AT IS NULL
-   AND am.metername = pm.metername     -- assumes PM is meter-based with a named meter
-WHERE pm.__END_AT IS NULL
-  AND pm.status = 'ACTIVE'
-  AND pm.frequnit IN ('HOURS', 'MILES', 'READINGS')   -- meter-based unit codes
-ORDER BY forecast_next_due NULLS LAST
-LIMIT 100;
+-- "When is the next PM due for asset X based on meter reading" is a
+-- FORWARD-LOOKING planning question — the example now lives in
+-- ../maximo-pm-planning/examples.sql (and is shipped as a Trusted UDF:
+-- maximo.metrics.meter_based_pm_forecast).
+--
+-- Use this skill (maximo-reliability) for BACKWARD-looking PM analytics:
+-- compliance, time-since-last-PM, MTBF, MTTR, failure-mode analysis.
 
 
 -- -----------------------------------------------------------------------------

@@ -1,0 +1,12 @@
+{
+  "query": "Maintenance cost per critical asset last year",
+  "expected_skill": "maximo-maintenance-cost",
+  "expected_behavior": [
+    "Loads maximo-maintenance-cost with maximo-overview as parent",
+    "Resolves 'critical asset' through the workspace glossary (e.g. ASSET.CRITICALITY >= threshold or a custom flag)",
+    "Uses v_asset_cost_summary or maximo.metrics.asset_maintenance_cost — does NOT just sum WORKORDER.ACTLABCOST + ACTMATCOST (excludes transaction-level granularity and post-close adjustments)",
+    "Aggregates labor + material costs from LABTRANS + MATUSETRANS attributed to ASSETNUM",
+    "Excludes WOs with ASSETNUM IS NULL (or buckets them separately and discloses)",
+    "Filters to the last 12 months by transaction date"
+  ]
+}
