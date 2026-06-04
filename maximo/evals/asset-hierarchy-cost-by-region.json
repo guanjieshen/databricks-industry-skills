@@ -1,0 +1,12 @@
+{
+  "query": "Show me maintenance cost rolled up by region last year",
+  "expected_skill": "maximo-asset-hierarchy",
+  "expected_behavior": [
+    "Loads BOTH maximo-asset-hierarchy AND maximo-maintenance-cost (composition — hierarchy enables maintenance-cost rollup)",
+    "Resolves 'region' through the workspace glossary (which LOCATIONS rows or LOCHIERARCHY level corresponds to a region)",
+    "Uses v_location_cost_summary (shipped by maintenance-cost specifically for this composition) — NOT v_asset_cost_summary (asset-level only)",
+    "OR composes manually: joins v_asset_cost_summary to LOCANCESTOR with SYSTEMID = 'PRIMARY' to roll asset costs up to ancestor locations",
+    "Filters period_start to last year (>= add_months(current_date(), -12))",
+    "Includes SITEID in joins — does not cross-product across sites"
+  ]
+}

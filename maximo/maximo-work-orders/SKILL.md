@@ -63,6 +63,11 @@ For any new question, resolve in this order:
 - Don't hard-code the open-status set — read from workspace glossary or ask.
 - Don't fabricate columns not in [schema.md](schema.md). If user mentions a custom column, check workspace glossary or ask.
 
+## Composes with
+
+- **`maximo-labor-resources`** for labor master detail (`LABOR`, `PERSON`, qualifications, crews). This skill uses `LABTRANS.LABORCODE` but doesn't document the LABOR table itself.
+- **`maximo-asset-hierarchy`** for hierarchical rollups ("open WOs under station X", "backlog by region"). Use `v_location_rollup_keys` to roll up WO counts/cost to any location parent.
+
 ## Setup helpers
 
 If the user hasn't registered the views/UDFs from this skill yet:

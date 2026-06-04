@@ -1,0 +1,12 @@
+{
+  "query": "List all assets under the East Mainline process system",
+  "expected_skill": "maximo-asset-hierarchy",
+  "expected_behavior": [
+    "Loads maximo-asset-hierarchy with maximo-overview as parent",
+    "Resolves 'East Mainline process system' through the workspace glossary to a LOCATION value or SYSTEM identifier",
+    "Uses LOCANCESTOR closure table with SYSTEMID = 'PRIMARY' (or appropriate system) — does NOT use naive PARENT self-join (which would return only one level)",
+    "Joins to ASSET via location to get the asset list",
+    "Filters by SITEID (asset-hierarchy gotcha #3 — SITEID belongs in every join)",
+    "If LOCANCESTOR is not materialized, falls back to recursive CTE on LOCHIERARCHY (probes existence first)"
+  ]
+}

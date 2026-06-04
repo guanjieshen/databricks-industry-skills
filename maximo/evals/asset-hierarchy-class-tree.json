@@ -1,0 +1,12 @@
+{
+  "query": "Show me all assets in classes under 'Rotating Equipment'",
+  "expected_skill": "maximo-asset-hierarchy",
+  "expected_behavior": [
+    "Loads maximo-asset-hierarchy with maximo-overview as parent",
+    "Recognizes this as a CLASSIFICATION hierarchy question (not physical location hierarchy) — uses CLASSSTRUCTURE, not LOCATIONS",
+    "Maximo does NOT ship a CLASSANCESTOR closure table — uses the v_class_tree view (which materializes the recursive CTE on CLASSSTRUCTURE.PARENT) OR writes an inline recursive CTE",
+    "Joins to ASSET on classstructureid to enumerate assets in any descendant class",
+    "Does NOT conflate classification hierarchy with physical hierarchy (asset-hierarchy gotcha #5)",
+    "Defensively caps recursion depth (WHERE depth < 20)"
+  ]
+}

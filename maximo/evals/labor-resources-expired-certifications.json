@@ -1,0 +1,13 @@
+{
+  "query": "Which certifications are expiring in the next 90 days?",
+  "expected_skill": "maximo-labor-resources",
+  "expected_behavior": [
+    "Loads maximo-labor-resources with maximo-overview as parent",
+    "Queries QUALPERSON + QUALIFICATION + PERSON (joined for display names)",
+    "Filters qp.status = 'ACTIVE' AND q.status = 'ACTIVE'",
+    "Filters qp.expirydate BETWEEN current_date() AND current_date() + INTERVAL 90 DAYS",
+    "Does NOT trust QUALPERSON.STATUS alone — explicitly checks EXPIRYDATE (see common_issues #13 from maximo-data-quality)",
+    "Returns results sorted by expirydate ascending",
+    "Uses v_qualification_expiry view if registered, or composes from raw tables otherwise"
+  ]
+}

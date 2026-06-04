@@ -38,7 +38,7 @@ a Genie Space needs, then benchmarks them.
 | Genie Space needs | Source in this family |
 |---|---|
 | **General instructions** | `maximo-overview` gotchas + the workspace glossary from `maximo-setup` |
-| **Certified example SQL** | each module skill's `examples.sql` (work-orders, reliability, integrity, hse, workflow-and-approvals) |
+| **Certified example SQL** | each module skill's `examples.sql` (work-orders, reliability, pm-planning, inventory, maintenance-cost, labor-resources, asset-hierarchy, integrity, hse, workflow-and-approvals) |
 | **Business synonyms** | the `<customer>-maximo-glossary` skill produced by `maximo-setup` |
 | **Trusted Asset functions** | each module's `metric_udfs.sql` (MTBF/MTTR/PM-compliance etc.) registered as UC functions |
 

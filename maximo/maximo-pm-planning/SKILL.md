@@ -87,10 +87,12 @@ For backward-looking PM performance metrics (compliance %, time-since-last-PM), 
 
 ## Composes with
 
-- `maximo-reliability` — shares the PM schema; defer historical analytics to that skill
-- `maximo-work-orders` — PM-generated WOs are instances; backlog and execution status of forecast PMs surface here
-- `maximo-inventory` — `JPMATERIAL` aggregated for forecast PMs feeds future material demand
-- `maximo-maintenance-cost` — PM-vs-CM cost analysis (use `maintenance-cost`'s UDF)
+- **`maximo-labor-resources`** — **the highest-value composition.** Workload-vs-capacity gap analytics: this skill provides forecast workload (`v_pm_workload_by_craft`, `pm_workload_hours` UDF); labor-resources provides matching capacity (`v_crew_capacity`, `crew_capacity_hours` UDF). The joined query — gap by craft × week — is the canonical answer to "are we over-scheduled?"
+- **`maximo-asset-hierarchy`** — for forecast-PMs-rolled-up-to-region queries. The shipped `v_pm_route_clusters` uses `LOCATIONS.PARENT` (one-level); for deeper grouping, compose with `LOCANCESTOR` / `v_location_rollup_keys`.
+- `maximo-reliability` — shares the PM schema; defer historical analytics to that skill.
+- `maximo-work-orders` — PM-generated WOs are instances; backlog and execution status of forecast PMs surface there.
+- `maximo-inventory` — `JPMATERIAL` aggregated for forecast PMs feeds future material demand.
+- `maximo-maintenance-cost` — PM-vs-CM cost analysis (use `maintenance-cost`'s UDF).
 
 ## References
 

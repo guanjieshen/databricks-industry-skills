@@ -140,6 +140,11 @@ Other industry-solution prefixes you may see: `PLUSC` (Calibration), `PLUST` (Tr
 - Don't fabricate column names that aren't in this document. If a customer mentions a custom field, ask if it's a standard extension column or something they added.
 - Don't conflate `WORKORDER.STATUS` (current) with `WOSTATUS.STATUS` (history). The #1 source of wrong answers.
 
+## Module pointers (depth lives in module skills)
+
+- For **labor / craft / crew / qualification / capacity** queries → load [`maximo-labor-resources`](../maximo-labor-resources/). The `LABOR`, `PERSON`, `CRAFT`, `LABORCRAFTRATE`, `QUALIFICATION`, `QUALPERSON`, `CREW`, `CALENDAR`, `WORKPERIOD`, `AVAILREFLY`, `ASSIGNMENT` tables and their gotchas live there.
+- For **hierarchical rollups** (by region / station / area / system / asset class) → load [`maximo-asset-hierarchy`](../maximo-asset-hierarchy/). The `LOCHIERARCHY`, `LOCANCESTOR`, `ASSETANCESTOR`, `SYSTEM`, `CLASSSTRUCTURE` content and closure-table mechanics live there.
+
 ## References
 
 - IBM Maximo Manage docs: `https://www.ibm.com/docs/en/masv-and-l/maximo-manage/`

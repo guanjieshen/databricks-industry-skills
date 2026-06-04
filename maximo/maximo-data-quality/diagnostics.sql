@@ -203,3 +203,61 @@ SELECT
 FROM {{maximo_catalog}}.{{maximo_schema}}.WORKORDER
 WHERE woclass = 'WORKORDER'
   AND reportdate >= current_date() - INTERVAL 365 DAYS;
+
+
+-- -----------------------------------------------------------------------------
+-- Probe 11 — Labor master integrity (composes with maximo-labor-resources)
+-- Symptom: LABTRANS references LABORCODE that doesn't exist in LABOR
+-- -----------------------------------------------------------------------------
+SELECT
+    'LABTRANS orphans (missing LABOR)' AS issue,
+    COUNT(*) AS orphan_count
+FROM {{maximo_catalog}}.{{maximo_schema}}.LABTRANS lt
+LEFT JOIN {{maximo_catalog}}.{{maximo_schema}}.LABOR l
+    ON l.laborcode = lt.laborcode AND l.orgid = lt.orgid
+WHERE l.laborcode IS NULL;
+-- Orphans inflate labor-cost totals against assets that didn't really have those resources.
+
+
+-- -----------------------------------------------------------------------------
+-- Probe 12 — Closure-table integrity (composes with maximo-asset-hierarchy)
+-- Symptom: LOCATIONS has a multi-level parent chain but LOCANCESTOR doesn't reflect it
+-- -----------------------------------------------------------------------------
+-- Builds the 2-hop reachable set via two LOCHIERARCHY hops and compares to
+-- LOCANCESTOR. A meaningful difference means the closure table is stale or
+-- missing rows; fall back to recursive CTEs in queries until ingestion is fixed.
+WITH two_hop AS (
+    SELECT DISTINCT g.location, lh.parent AS ancestor, g.siteid, g.systemid
+    FROM {{maximo_catalog}}.{{maximo_schema}}.LOCHIERARCHY g
+    JOIN {{maximo_catalog}}.{{maximo_schema}}.LOCHIERARCHY lh
+        ON lh.location = g.parent AND lh.siteid = g.siteid AND lh.systemid = g.systemid
+    WHERE g.systemid = 'PRIMARY'
+)
+SELECT
+    'LOCANCESTOR missing 2-hop ancestor rows' AS issue,
+    COUNT(*) AS missing_count
+FROM two_hop t
+LEFT JOIN {{maximo_catalog}}.{{maximo_schema}}.LOCANCESTOR la
+    ON la.location = t.location AND la.ancestor = t.ancestor
+   AND la.siteid = t.siteid AND la.systemid = t.systemid
+WHERE la.location IS NULL;
+
+
+-- -----------------------------------------------------------------------------
+-- Probe 13 — Qualification expiry gaps
+-- Symptom: Qualifications attached to ACTIVE labor are expired but still marked ACTIVE
+-- -----------------------------------------------------------------------------
+SELECT
+    qp.personid, qp.qualificationid,
+    qp.expirydate,
+    datediff(DAY, qp.expirydate, current_date()) AS days_past_expiry
+FROM {{maximo_catalog}}.{{maximo_schema}}.QUALPERSON qp
+JOIN {{maximo_catalog}}.{{maximo_schema}}.LABOR l
+    ON l.personid = qp.personid AND l.status = 'ACTIVE'
+WHERE qp.status = 'ACTIVE'
+  AND qp.expirydate < current_date()
+ORDER BY days_past_expiry DESC
+LIMIT 100;
+-- Rows here mean the qualification status isn't being maintained — the labor
+-- record still shows the cert as ACTIVE even though it's lapsed. Filter
+-- EXPIRYDATE in every "qualified labor" query to avoid trusting these rows.

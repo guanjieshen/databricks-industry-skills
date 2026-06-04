@@ -10,9 +10,10 @@ Neither persona is a Maximo specialist.
 
 | Persona | What they do | Skills they use most |
 |---|---|---|
-| **Maintenance planner / analyst** | Operational queries — backlog, scheduling, completion, labor hours, approvals, **PM forecasting** | `overview`, `setup`, `data-quality`, `work-orders`, `workflow-and-approvals`, `pm-planning` |
+| **Maintenance planner / analyst** | Operational queries — backlog, scheduling, completion, labor hours, approvals, **PM forecasting** | `overview`, `setup`, `data-quality`, `work-orders`, `workflow-and-approvals`, `pm-planning`, `labor-resources` |
+| **Maintenance superintendent / resource manager** | Crew utilization, qualifications, workload-vs-capacity, contractor mix, vacation impact | `overview`, `setup`, `data-quality`, `labor-resources`, `pm-planning` |
 | **Materials specialist / storeroom manager** | Stockout risk, reorder alerts, dead stock, ABC, parts availability for WOs | `overview`, `setup`, `data-quality`, `inventory` |
-| **Maintenance manager / director** | Budget vs actual, cost-per-asset, PM-vs-CM cost, contractor spend, cost trends | `overview`, `setup`, `data-quality`, `maintenance-cost`, `pm-planning` |
+| **Maintenance manager / director** | Budget vs actual, cost-per-asset, PM-vs-CM cost, contractor spend, cost trends, regional rollups | `overview`, `setup`, `data-quality`, `maintenance-cost`, `pm-planning`, `asset-hierarchy` |
 | **Reliability engineer** | Reliability metrics, failure-mode analysis, cost-per-failure | `overview`, `setup`, `data-quality`, `work-orders`, `reliability`, `maintenance-cost` |
 | **Integrity engineer** | Pressure-vessel inspections, corrosion trending, RBI, regulatory compliance | `overview`, `setup`, `data-quality`, `integrity`, `reliability` |
 | **HSE manager** | Permits, incidents, investigations, regulatory reporting, MoC approvals | `overview`, `setup`, `data-quality`, `hse`, `workflow-and-approvals` |
@@ -42,6 +43,8 @@ Neither persona is a Maximo specialist.
 | [`maximo-pm-planning`](./maximo-pm-planning/) | PM forecasting, craft workload, JOBPLAN content management, route grouping (**forward-looking**) |
 | [`maximo-inventory`](./maximo-inventory/) | Reorder alerts, stock positions, dead stock, parts availability for WOs, ABC classification |
 | [`maximo-maintenance-cost`](./maximo-maintenance-cost/) | Cost-per-asset, budget vs actual, cost variance, PM-vs-CM cost, contractor spend |
+| [`maximo-labor-resources`](./maximo-labor-resources/) | Labor masters, crews, qualifications, shift calendars, capacity — composes with pm-planning for workload-vs-capacity |
+| [`maximo-asset-hierarchy`](./maximo-asset-hierarchy/) | Location/asset closure tables, classification hierarchies, rollups by region / station / area / system / class |
 | [`maximo-integrity`](./maximo-integrity/) | Corrosion trending, regulatory inspections, RBI, inspection-tied incidents (O&G-heavy) |
 | [`maximo-hse`](./maximo-hse/) | Permits, incidents, investigations, MOC (O&G-heavy) |
 | [`maximo-genie-space`](./maximo-genie-space/) | Scaffold/curate a Genie Space over Maximo data — assembles instructions, certified example SQL, synonyms, and Trusted Asset functions, then benchmarks accuracy |

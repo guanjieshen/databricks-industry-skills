@@ -77,6 +77,7 @@ If the question is about **upcoming material demand from PMs**, use `maximo-pm-p
 - `maximo-work-orders` — `WPMATERIAL` (planned materials on WOs); `MATUSETRANS` joins back to WORKORDER
 - `maximo-maintenance-cost` — material cost via `INVCOST` (costing-method context lives here, cost rollup lives there)
 - `maximo-pm-planning` — `JPMATERIAL` aggregated for forecast PMs feeds future material demand
+- **`maximo-asset-hierarchy`** — for queries spanning storerooms across regions ("total on-hand under region X"). Compose with `v_location_rollup_keys` to roll up `INVBALANCES` by storeroom parent.
 
 ## References
 

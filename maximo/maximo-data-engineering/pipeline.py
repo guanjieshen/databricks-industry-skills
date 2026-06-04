@@ -255,3 +255,309 @@ def failurereport():
 )
 def failurecode():
     return bronze("failurecode")
+
+
+# =============================================================================
+# LABOR & RESOURCES — adds Silver modeling for the labor master + capacity
+# tables that maximo-labor-resources composes against.
+# =============================================================================
+
+# LABOR — SCD Type 2 (rate / status / craft changes are historically relevant)
+@dlt.view(name="labor_bronze_view")
+def labor_bronze_view():
+    return bronze("labor")
+
+
+dlt.create_streaming_table(
+    name="labor",
+    comment="Silver LABOR — labor master, SCD2.",
+    table_properties={"quality": "silver"},
+)
+dlt.apply_changes(
+    target="labor",
+    source="labor_bronze_view",
+    keys=["LABORCODE", "ORGID"],
+    sequence_by=F.col(AUDIT_COLUMN),
+    stored_as_scd_type=2,
+)
+
+
+# PERSON — SCD Type 2 (PII updates over time)
+@dlt.view(name="person_bronze_view")
+def person_bronze_view():
+    return bronze("person")
+
+
+dlt.create_streaming_table(
+    name="person",
+    comment="Silver PERSON — person master, SCD2. PII-sensitive.",
+    table_properties={"quality": "silver"},
+)
+dlt.apply_changes(
+    target="person",
+    source="person_bronze_view",
+    keys=["PERSONID"],
+    sequence_by=F.col(AUDIT_COLUMN),
+    stored_as_scd_type=2,
+)
+
+
+# CRAFT — Materialized View (slow-changing reference)
+@dlt.table(
+    name="craft",
+    comment="Silver CRAFT — craft master, slow-changing reference.",
+    table_properties={"quality": "silver"},
+)
+def craft():
+    return bronze("craft")
+
+
+# LABORCRAFTRATE — SCD Type 2 (rates change over time)
+@dlt.view(name="laborcraftrate_bronze_view")
+def laborcraftrate_bronze_view():
+    return bronze("laborcraftrate")
+
+
+dlt.create_streaming_table(
+    name="laborcraftrate",
+    comment="Silver LABORCRAFTRATE — pay rate per (labor, craft, skill level), SCD2.",
+    table_properties={"quality": "silver"},
+)
+dlt.apply_changes(
+    target="laborcraftrate",
+    source="laborcraftrate_bronze_view",
+    keys=["LABORCODE", "ORGID", "CRAFT", "SKILLLEVEL"],
+    sequence_by=F.col(AUDIT_COLUMN),
+    stored_as_scd_type=2,
+)
+
+
+# QUALIFICATION — Materialized View
+@dlt.table(
+    name="qualification",
+    comment="Silver QUALIFICATION — qualification catalog.",
+    table_properties={"quality": "silver"},
+)
+def qualification():
+    return bronze("qualification")
+
+
+# CERTIFICATION — Materialized View
+@dlt.table(
+    name="certification",
+    comment="Silver CERTIFICATION — certification catalog.",
+    table_properties={"quality": "silver"},
+)
+def certification():
+    return bronze("certification")
+
+
+# QUALPERSON — SCD Type 2 (expirydate evolves; we need history)
+@dlt.view(name="qualperson_bronze_view")
+def qualperson_bronze_view():
+    return bronze("qualperson")
+
+
+dlt.create_streaming_table(
+    name="qualperson",
+    comment="Silver QUALPERSON — person ↔ qualification with expiry, SCD2.",
+    table_properties={"quality": "silver"},
+)
+dlt.apply_changes(
+    target="qualperson",
+    source="qualperson_bronze_view",
+    keys=["PERSONID", "QUALIFICATIONID"],
+    sequence_by=F.col(AUDIT_COLUMN),
+    stored_as_scd_type=2,
+)
+
+
+# CREW — SCD Type 2
+@dlt.view(name="crew_bronze_view")
+def crew_bronze_view():
+    return bronze("crew")
+
+
+dlt.create_streaming_table(
+    name="crew",
+    comment="Silver CREW — crew master, SCD2.",
+    table_properties={"quality": "silver"},
+)
+dlt.apply_changes(
+    target="crew",
+    source="crew_bronze_view",
+    keys=["CREWID", "ORGID"],
+    sequence_by=F.col(AUDIT_COLUMN),
+    stored_as_scd_type=2,
+)
+
+
+# CREWLABOR — SCD2 (membership periods)
+@dlt.view(name="crewlabor_bronze_view")
+def crewlabor_bronze_view():
+    return bronze("crewlabor")
+
+
+dlt.create_streaming_table(
+    name="crewlabor",
+    comment="Silver CREWLABOR — crew membership with STARTDATE/ENDDATE, SCD2.",
+    table_properties={"quality": "silver"},
+)
+dlt.apply_changes(
+    target="crewlabor",
+    source="crewlabor_bronze_view",
+    keys=["CREWID", "ORGID", "LABORCODE"],
+    sequence_by=F.col(AUDIT_COLUMN),
+    stored_as_scd_type=2,
+)
+
+
+# PERSONGROUP — Materialized View
+@dlt.table(
+    name="persongroup",
+    comment="Silver PERSONGROUP — named person group reference.",
+    table_properties={"quality": "silver"},
+)
+def persongroup():
+    return bronze("persongroup")
+
+
+# CALENDAR — Materialized View
+@dlt.table(
+    name="calendar",
+    comment="Silver CALENDAR — working calendar reference.",
+    table_properties={"quality": "silver"},
+)
+def calendar():
+    return bronze("calendar")
+
+
+# WORKPERIOD — Streaming Table, append-only
+@dlt.table(
+    name="workperiod",
+    comment="Silver WORKPERIOD — append-only shift / holiday periods. Coverage often sparse; downstream skills should probe.",
+    table_properties={"quality": "silver"},
+)
+def workperiod():
+    return bronze("workperiod")
+
+
+# AVAILREFLY — Streaming Table, append-only
+@dlt.table(
+    name="availrefly",
+    comment="Silver AVAILREFLY — planned absences (vacation / leave / training).",
+    table_properties={"quality": "silver"},
+)
+def availrefly():
+    return bronze("availrefly")
+
+
+# ASSIGNMENT — Streaming Table + APPLY CHANGES (status evolves on the row)
+@dlt.view(name="assignment_bronze_view")
+def assignment_bronze_view():
+    return bronze("assignment")
+
+
+dlt.create_streaming_table(
+    name="assignment",
+    comment="Silver ASSIGNMENT — labor ↔ WO assignments, current state.",
+    table_properties={"quality": "silver"},
+)
+dlt.apply_changes(
+    target="assignment",
+    source="assignment_bronze_view",
+    keys=["WONUM", "SITEID", "LABORCODE"],
+    sequence_by=F.col("SCHEDDATE"),
+    stored_as_scd_type=1,
+)
+
+
+# =============================================================================
+# HIERARCHY — adds Silver modeling for the closure tables and classification
+# that maximo-asset-hierarchy composes against.
+# =============================================================================
+
+# LOCHIERARCHY — Materialized View (small, slow-changing)
+@dlt.table(
+    name="lochierarchy",
+    comment="Silver LOCHIERARCHY — multi-system parent-child for LOCATIONS. Filter SYSTEMID for the hierarchy you want.",
+    table_properties={"quality": "silver"},
+)
+def lochierarchy():
+    return bronze("lochierarchy")
+
+
+# LOCANCESTOR — Materialized View, rebuilt from base.
+# This is the closure table; if Bronze captures it natively, mirror it.
+# Otherwise compute via recursive CTE on LOCHIERARCHY (commented alternative).
+@dlt.table(
+    name="locancestor",
+    comment="Silver LOCANCESTOR — location closure table. One row per (descendant, ancestor, system) at any depth.",
+    table_properties={"quality": "silver"},
+)
+def locancestor():
+    # Default: pass through from Bronze.
+    return bronze("locancestor")
+    # Alternative for customers without a Bronze LOCANCESTOR: compute via
+    # recursive CTE on LOCHIERARCHY (requires SQL, not pure dlt — register
+    # via SQL DDL outside the pipeline if needed).
+
+
+# ASSETANCESTOR — Materialized View, same pattern
+@dlt.table(
+    name="assetancestor",
+    comment="Silver ASSETANCESTOR — asset closure table. One row per (descendant, ancestor) at any depth.",
+    table_properties={"quality": "silver"},
+)
+def assetancestor():
+    return bronze("assetancestor")
+
+
+# SYSTEM — Materialized View
+@dlt.table(
+    name="system",
+    comment="Silver SYSTEM — hierarchy system definitions.",
+    table_properties={"quality": "silver"},
+)
+def system_ref():
+    return bronze("system")
+
+
+# CLASSSTRUCTURE — Materialized View
+@dlt.table(
+    name="classstructure",
+    comment="Silver CLASSSTRUCTURE — asset/location classification tree.",
+    table_properties={"quality": "silver"},
+)
+def classstructure():
+    return bronze("classstructure")
+
+
+# CLASSSPEC — Materialized View
+@dlt.table(
+    name="classspec",
+    comment="Silver CLASSSPEC — specification attributes at class level.",
+    table_properties={"quality": "silver"},
+)
+def classspec():
+    return bronze("classspec")
+
+
+# ASSETSPEC — Streaming Table + APPLY CHANGES (per-asset spec values)
+@dlt.view(name="assetspec_bronze_view")
+def assetspec_bronze_view():
+    return bronze("assetspec")
+
+
+dlt.create_streaming_table(
+    name="assetspec",
+    comment="Silver ASSETSPEC — per-asset spec values driven by CLASSSPEC.",
+    table_properties={"quality": "silver"},
+)
+dlt.apply_changes(
+    target="assetspec",
+    source="assetspec_bronze_view",
+    keys=["ASSETNUM", "SITEID", "ASSETATTRID"],
+    sequence_by=F.col(AUDIT_COLUMN),
+    stored_as_scd_type=1,
+)

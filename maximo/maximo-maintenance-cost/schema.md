@@ -94,15 +94,19 @@ To compute contractor spend:
 - Sum `LABTRANS.LINECOST`
 - Or join via `WORKORDER.VENDOR` for service-contract work
 
-## `LABOR` — labor master (for contractor identification)
+## `LABOR` — labor master (referenced only)
 
-| Column | Notes |
+For full LABOR table documentation (columns, joins, contractor identification patterns), see **[`../maximo-labor-resources/schema.md`](../maximo-labor-resources/schema.md)**. The labor master is the domain of `maximo-labor-resources`; this skill consumes it only for cost attribution.
+
+Quick reference of the columns this skill touches:
+
+| Column | Used for |
 |---|---|
-| `LABORCODE` | The person or contractor identifier |
-| `PERSONID` | FK to PERSON (for internal labor) |
-| `VENDOR` | FK to COMPANIES (for contractor labor — populated when LABORCODE represents a vendor resource) |
-| `CRAFT` | Default craft |
-| `LABORTYPE` | Customer-defined; some use this to discriminate employee vs contractor |
+| `LABORCODE` | Joining `LABTRANS` to identify the resource that booked hours |
+| `VENDOR` | Contractor identification (default `contractor_spend` UDF semantics) |
+| `LABORTYPE` | Alternate contractor flag (customer-configurable) |
+
+For analytics that go beyond cost (capacity, qualifications, crew composition), compose with `maximo-labor-resources`.
 
 ## Cardinality summary
 
