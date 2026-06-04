@@ -1,0 +1,10 @@
+{
+  "query": "set up Genie for our pipeline data — it doesn't know our table layout",
+  "expected_skill": "pods-setup",
+  "expected_behavior": [
+    "Loads pods-setup",
+    "Introspects the physical schema and maps columns/tables to canonical PODS concepts",
+    "Records the UNIT of each measure column (the load-bearing precondition)",
+    "Generates the workspace glossary skill and offers to register UC comments"
+  ]
+}

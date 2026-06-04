@@ -1,0 +1,10 @@
+{
+  "query": "what are the worst anomalies on line 7 and where should I dig?",
+  "expected_skill": "pods-ili-integrity",
+  "expected_behavior": [
+    "Loads pods-ili-integrity",
+    "Ranks by ERF / predicted failure pressure via the Trusted Asset function, NOT raw depth",
+    "Applies Modified B31G / RSTRENG remaining-strength screening",
+    "Returns dig candidates located by route + measure"
+  ]
+}

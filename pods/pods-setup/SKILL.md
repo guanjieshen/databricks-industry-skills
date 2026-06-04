@@ -10,15 +10,17 @@ description: |
   "set up PODS for Genie", "configure Genie for our pipeline data", "Genie
   doesn't know our pipeline tables", "map our schema to PODS", "set up our PODS
   glossary", "what units are our measures in".
-tags:
-  - data-source:pods
-  - tier:foundation
-  - persona:da-platform
+compatibility: Requires databricks CLI >= v0.294.0 (experimental aitools)
+metadata:
+  version: "0.1.0"
+parent: pods-overview
 ---
 
 # PODS Setup
 
 Bootstrap a Databricks workspace so Genie Code can answer PODS questions accurately against the customer's **actual** schema. This is a **one-time setup** per workspace, run by the D&A / GIS team. After it completes, every other PODS skill works far more reliably.
+
+> **FIRST:** load the `pods-overview` skill — it carries the PODS 7 data model, the linear-referencing networks, the module map, and the universal gotchas (foot-vs-meter units, route-vs-measure, ILI run vintage). This skill builds on that foundation.
 
 **Why this is the most important skill in the family.** Operators "conform to PODS but not exactly" — renamed columns, different units, only some modules adopted. The analytical skills (`pods-ili-integrity`, etc.) are written against *canonical* PODS concepts. This skill builds the bridge from canonical → physical. Get it right and the analytical skills are accurate; skip it and Genie generates clean SQL against the wrong columns/units — **the failure the end user cannot see.**
 

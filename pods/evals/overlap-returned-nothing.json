@@ -1,0 +1,10 @@
+{
+  "query": "my HCA overlap query returned nothing, why?",
+  "expected_skill": "pods-data-quality",
+  "expected_behavior": [
+    "Loads pods-data-quality",
+    "Checks for non-monotonic route measures, route gaps, and unit mismatch (feet vs meters)",
+    "Checks that events and HCA are on the same route",
+    "Explains the likely silent cause rather than asserting zero overlaps"
+  ]
+}

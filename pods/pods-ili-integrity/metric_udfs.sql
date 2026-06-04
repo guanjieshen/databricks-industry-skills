@@ -1,3 +1,11 @@
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Trusted Asset functions for Genie.
+-- These are UC SQL functions: register them once (CREATE FUNCTION) so Genie
+-- Spaces can call them as certified, governed metrics rather than regenerating
+-- ad-hoc SQL. Substitute your catalog.schema before running.
+-- See: https://docs.databricks.com/aws/en/genie/trusted-assets
+-- ─────────────────────────────────────────────────────────────────────────────
+
 -- =============================================================================
 -- PODS ILI Integrity — UC SQL Functions (certified integrity math)
 -- =============================================================================

@@ -9,11 +9,9 @@ description: |
   "conform our pipeline tables", "create the centerline table", "ingest ILI
   runs". For querying existing PODS data, use pods-overview + the module skills
   instead.
-tags:
-  - data-source:pods
-  - tier:foundation
-  - industry:oil-and-gas
-  - persona:da-platform
+metadata:
+  version: "0.1.0"
+parent: pods-overview
 ---
 
 # PODS Data Engineering
@@ -21,6 +19,8 @@ tags:
 Help D&A / platform engineers model raw pipeline feeds into a conformed PODS layer on Databricks. The goal is a Silver/Gold layer where the analytical skills (`pods-linear-referencing`, `pods-ili-integrity`, …) work reliably — which above all means **a normalized route-measure spine with one route key and one measure unit.**
 
 This skill is about *modeling* PODS data already landed in Databricks, not about connectors/replication from Esri or ILI vendors (out of scope — see family README).
+
+> **FIRST:** load the `pods-overview` skill — it carries the PODS 7 data model, the linear-referencing networks, the module map, and the universal gotchas (foot-vs-meter units, route-vs-measure, ILI run vintage). This skill builds on that foundation.
 
 ## When to use
 

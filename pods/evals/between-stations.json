@@ -1,0 +1,10 @@
+{
+  "query": "what assets are between station 1240+00 and 1310+00?",
+  "expected_skill": "pods-linear-referencing",
+  "expected_behavior": [
+    "Loads pods-linear-referencing with pods-overview as parent",
+    "Converts stationing to route measure",
+    "Uses a route + measure range-overlap join, not measure alone",
+    "Returns results in the canonical unit recorded by pods-setup"
+  ]
+}

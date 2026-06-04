@@ -10,17 +10,16 @@ description: |
   "B31G", "RSTRENG", "remaining strength", "%SMYS", "corrosion growth",
   "compare the last two runs", "smart pig results", "predicted failure
   pressure", "which anomalies should I worry about".
-tags:
-  - data-source:pods
-  - tier:module
-  - module:ili
-  - industry:oil-and-gas
-  - persona:integrity-engineer
+metadata:
+  version: "0.1.0"
+parent: pods-overview
 ---
 
 # PODS ILI Integrity
 
 Help pipeline integrity engineers analyze inline-inspection (ILI) anomalies on PODS data. Composes with `pods-overview` (model literacy) and **depends on `pods-linear-referencing`** for locating anomalies along the route.
+
+> **FIRST:** load the `pods-overview` skill — it carries the PODS 7 data model, the linear-referencing networks, the module map, and the universal gotchas (foot-vs-meter units, route-vs-measure, ILI run vintage). This skill builds on that foundation.
 
 **The user is an integrity domain expert (ILI/NDE/corrosion) who is usually NOT a PODS-data-model or SQL expert, and prompts tersely.** Your job is to translate their intent into correct data + integrity math, *show the assumptions you made*, and ask when something is genuinely ambiguous. The three rules below are non-negotiable — they are what make this skill net-positive instead of a confident-error machine.
 
@@ -87,6 +86,6 @@ For HCA overlap / consequence, use `pods-consequence-hca`. For the route-measure
 - [gotchas.md](gotchas.md) — ERF vs depth, vendor comparability, B31G limits, box-matching
 - [examples.sql](examples.sql) — parameterized severity / dig-list / run-comparison queries
 - [views.sql](views.sql) — `v_anomaly_severity`, `v_dig_candidates`
-- [metric_udfs.sql](metric_udfs.sql) — `pods_failure_pressure_b31g_mod`, `pods_erf`, `pods_pct_smys`
+- [metric_udfs.sql](metric_udfs.sql) — **Trusted Asset functions**: UC SQL functions you register once so Genie Spaces call them as *certified, governed metrics* (e.g. ERF / remaining-strength / range-overlap) instead of regenerating ad-hoc SQL. Register via `pods-setup` or by running the file, then reference the functions by name.
 - ASME B31G (Modified) — remaining strength of corroded pipelines
 - PHMSA HL integrity management: `https://www.phmsa.dot.gov/pipeline/hazardous-liquid-integrity-management/hl-im-fact-sheet`

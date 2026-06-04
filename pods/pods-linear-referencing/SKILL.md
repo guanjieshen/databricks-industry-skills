@@ -12,18 +12,16 @@ description: |
   "between stations", "near milepost", "along the route", "dynamic
   segmentation", "linear referencing", "LRS", "route event", "overlap",
   "stationing", "measure", "centerline".
-tags:
-  - data-source:pods
-  - tier:foundation
-  - industry:oil-and-gas
-  - persona:integrity-engineer
-  - persona:gis-analyst
-  - persona:da-platform
+metadata:
+  version: "0.1.0"
+parent: pods-overview
 ---
 
 # PODS Linear Referencing
 
 The PODS model locates almost everything — anomalies, welds, valves, HCAs, coating, pressure, class location — as **route events** on an **M-aware centerline**, not as independent geometry. This skill is how you query that correctly. It composes under `pods-ili-integrity`, `pods-consequence-hca`, and every other module: they all reduce to route-measure operations defined here.
+
+> **FIRST:** load the `pods-overview` skill — it carries the PODS 7 data model, the linear-referencing networks, the module map, and the universal gotchas (foot-vs-meter units, route-vs-measure, ILI run vintage). This skill builds on that foundation.
 
 **This is where unaided Genie fails hardest and most invisibly** (unit mismatches, naive distance filters, broken overlaps). Treat the patterns here as authoritative — do not improvise LRS math.
 
@@ -156,7 +154,7 @@ See [examples.sql](examples.sql) for fully worked, parameterized versions, and [
 
 - [examples.sql](examples.sql) — parameterized route-measure patterns
 - [views.sql](views.sql) — `v_route_events_m` normalized event spine
-- [metric_udfs.sql](metric_udfs.sql) — unit conversion + overlap UDFs
+- [metric_udfs.sql](metric_udfs.sql) — **Trusted Asset functions**: UC SQL functions you register once so Genie Spaces call them as *certified, governed metrics* (e.g. ERF / remaining-strength / range-overlap) instead of regenerating ad-hoc SQL. Register via `pods-setup` or by running the file, then reference the functions by name.
 - [schema.md](schema.md) — LRS feature classes and columns
 - [gotchas.md](gotchas.md) — units, direction, calibration, monotonicity
 - Esri APR LRS data model: `https://pro.arcgis.com/en/pro-app/latest/help/production/location-referencing-pipelines/alrs-data-model.htm`

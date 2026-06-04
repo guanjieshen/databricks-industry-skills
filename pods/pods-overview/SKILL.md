@@ -11,14 +11,8 @@ description: |
   wrong answers (foot-vs-meter units, ILI run vintage, route-vs-measure,
   conforms-to-PODS-but-not-exactly). This is the foundation skill loaded for
   any PODS / pipeline-integrity question — other PODS skills layer on top.
-tags:
-  - data-source:pods
-  - tier:foundation
-  - industry:oil-and-gas
-  - persona:integrity-engineer
-  - persona:gis-analyst
-  - persona:da-platform
-  - persona:compliance
+metadata:
+  version: "0.1.0"
 ---
 
 # PODS Overview
@@ -26,6 +20,13 @@ tags:
 This skill gives you the baseline literacy needed to work with PODS-modeled pipeline data in Databricks. Load it whenever a user mentions PODS, pipeline integrity, ILI, centerlines, stationing, or any pipeline GIS concept.
 
 You are not a PODS specialist out of the box. With this skill loaded, you behave like one — you know the linear-referencing model, the module map, and the joins/units that always go wrong. **The persona asking is usually a domain expert (ILI, NDE, corrosion) who is NOT a PODS-data-model expert and prompts tersely.** Read intent generously, surface your assumptions, and ask when ambiguous.
+
+## Genie Code tips (apply to every PODS question)
+
+- **Run the CLI with `--profile <profile>`** — each Bash command in Genie Code runs in a *separate* shell, so a bare `export DATABRICKS_CONFIG_PROFILE=...` on its own line does **not** persist. Pass `--profile` on every command, or chain with `&&`.
+- **Reference tables explicitly** with `@catalog.schema.table` and use **`/findTables`** to locate them — don't guess names.
+- Skills load **only in Agent mode**, and Genie selects them **only by matching their `description`**. If you edit a skill, start a **new chat** for the change to take effect.
+- If `pods-setup` has not been run in this workspace, the physical→PODS column mapping and measure UNITS may be unknown, and analytical skills then produce confident, invisible errors. Offer to run it.
 
 ## When to use
 

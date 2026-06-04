@@ -53,6 +53,9 @@ The integrity engineer is the primary persona. None of these personas are PODS-d
 | `pods-cathodic-protection` | CP survey readings, coverage gaps, −850 mV criteria along route | fast-follow |
 | `pods-phmsa-reporting` | Assessment intervals, repair criteria, reassessment scheduling (49 CFR 192/195) — high value, high liability | fast-follow |
 | `pods-tvc-records` | Traceable / Verifiable / Complete material-records completeness | fast-follow |
+| [`pods-genie-space`](./pods-genie-space/) | Scaffold/curate a Genie Space over PODS data — assembles instructions, units, certified example SQL, synonyms, and Trusted Asset functions (ERF, remaining strength, overlap), then benchmarks accuracy | **shipped** |
+
+Discovery + quality test cases live in [`evals/`](./evals/) (`query → expected_behavior`).
 
 ## Composes with the Maximo family
 

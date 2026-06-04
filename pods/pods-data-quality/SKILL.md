@@ -9,17 +9,16 @@ description: |
   Triggers on: "this number looks wrong", "my overlap returned nothing", "the
   anomaly count seems off", "data quality", "validate our PODS data", "why is
   this anomaly not in any HCA", "check our centerline".
-tags:
-  - data-source:pods
-  - tier:foundation
-  - industry:oil-and-gas
-  - persona:da-platform
-  - persona:integrity-engineer
+metadata:
+  version: "0.1.0"
+parent: pods-overview
 ---
 
 # PODS Data Quality
 
 A diagnostic playbook for PODS data issues. Most "wrong answer" reports on pipeline data trace to **linear-referencing data quality** — and because LRS errors are invisible in results, this skill exists to surface them deliberately.
+
+> **FIRST:** load the `pods-overview` skill — it carries the PODS 7 data model, the linear-referencing networks, the module map, and the universal gotchas (foot-vs-meter units, route-vs-measure, ILI run vintage). This skill builds on that foundation.
 
 ## When to use
 
