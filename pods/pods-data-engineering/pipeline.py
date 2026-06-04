@@ -62,6 +62,11 @@ def silver_ili_runs():
             F.to_date("run_date").alias("run_date"),
             F.col("vendor").alias("vendor"),
             F.col("tool").alias("tool_type"),
+            # +/- %wall tool accuracy per vendor/tool (e.g. 10 for +/-10% wall).
+            # Usually a small reference set captured in pods-setup, not in the raw
+            # feed. NULL => downstream assesses at call depth and says so. Replace
+            # this placeholder with a left-join to your vendor/tool tolerance ref.
+            F.lit(None).cast("double").alias("tool_tolerance_pct_wall"),
         )
         .dropDuplicates(["run_id"])
     )

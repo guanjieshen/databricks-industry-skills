@@ -1,0 +1,10 @@
+{
+  "query": "there's a band of closely spaced metal loss around station 980 on line 7 — how bad is it?",
+  "expected_skill": "pods-ili-integrity",
+  "expected_behavior": [
+    "Loads pods-ili-integrity",
+    "Recognizes the features may interact and assesses them as one effective defect (v_cluster_severity), not independently",
+    "Uses the cluster envelope length and governing (deepest) depth in Modified B31G",
+    "States the interaction window used (default 3x wall) and that clustering is axial-only screening"
+  ]
+}

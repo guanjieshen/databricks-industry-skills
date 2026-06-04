@@ -42,26 +42,28 @@ For HCA overlap / consequence, use `pods-consequence-hca`. For the route-measure
 
 ## Pre-flight (per session, then cache)
 
-1. **Run + line.** Which ILI run (default: **latest** by run date) and which line (`route_id`)? Resolve business names ("the 30-inch") via glossary.
-2. **ERF source.** Is ERF / predicted failure pressure **stored** (glossary) or must it be **computed**? If computed, confirm OD/wall/SMYS/MAOP are available (from `v_anomalies_enriched`).
-3. **Safety factor.** ERF needs a code/class safety factor — confirm it; never default silently.
-4. **Method.** Modified B31G is the shipped default. If the operator uses RSTRENG/effective-area or a vendor method, prefer their certified UDF and say which was used.
+1. **Run + line.** Which line (`route_id`)? For metal-loss / ERF / dig questions default to the **latest METAL-LOSS run** (`v_latest_metal_loss_run`, i.e. MFL/UT) — **not** the latest run overall, which may be a caliper/geometry run that finds no metal loss. Resolve business names ("the 30-inch") via glossary.
+2. **Tolerance source.** Is the ILI tool tolerance (± %wall) known per run/tool (glossary `tool_tolerance_pct_wall`)? If yes, assess on the **conservative (tolerance-adjusted)** depth. If not, assess on call depth and **say it's call-depth-only, not POE-adjusted**.
+3. **ERF source.** Is ERF / predicted failure pressure **stored** (glossary) or must it be **computed**? If computed, confirm OD/wall/SMYS/MAOP are available (from `v_anomalies_enriched` — requires the Gold layer built by `pods-data-engineering`).
+4. **Safety factor.** ERF needs a code/class safety factor — confirm it; never default silently.
+5. **Method.** Modified B31G is the shipped default and is **conservative vs RSTRENG** (it may over-call digs). If the operator uses RSTRENG/effective-area or a vendor method, prefer their certified UDF and say which was used.
 
 ## Intent translation (the terse-question dictionary)
 
 | User says | They mean (do this) |
 |---|---|
-| "worst / most severe anomalies" | Rank by **ERF desc** (or lowest predicted failure pressure), NOT raw `depth_pct` |
-| "where do I dig" / "dig list" | ERF-ranked candidates, typically ERF ≥ threshold or top-N, on the **latest** run; flag immediate vs scheduled |
-| "compare the last two runs" | Latest two runs **on the same line**; box-match by measure within tolerance; compute growth; **warn if tools/vendors differ** |
+| "worst / most severe anomalies" | Rank by **conservative ERF desc** (tolerance-adjusted; lowest predicted failure pressure), **clustered**, on the latest **metal-loss** run — NOT raw `depth_pct` |
+| "where do I dig" / "dig list" | Cluster-aware, conservative-ERF-ranked candidates (`v_dig_candidates`) on the latest metal-loss run; response classes are **illustrative**, tied to the reg + operator criteria |
+| "interacting / clustered corrosion" | Use `v_cluster_severity` — adjacent metal loss assessed as ONE effective defect, not independent features |
+| "compare the last two runs" | Latest two **metal-loss** runs **on the same line**; box-match by measure within tolerance; compute growth; **warn if tools/vendors differ** |
 | "deep anomalies" | Here depth IS the metric — but still report ERF alongside |
-| "anomalies on line 4" | Latest run on `L04`, single vintage |
+| "anomalies on line 4" | Latest **metal-loss** run on `L04`, single vintage |
 
 ## Workflow priority
 
-1. **Enriched view** `v_anomalies_enriched` (from `pods-data-engineering`) — anomalies + run metadata + pipe attributes + measure_m.
-2. **Certified UDFs** in [metric_udfs.sql](metric_udfs.sql) — `pods_failure_pressure_b31g_mod`, `pods_erf`, `pods_pct_smys`, `pods_depth_in`.
-3. **Ranked views** in [views.sql](views.sql) — `v_anomaly_severity`, `v_dig_candidates`.
+1. **Enriched view** `v_anomalies_enriched` + run-selection views `v_latest_metal_loss_run` (from `pods-data-engineering` — requires the Gold layer; if absent, build it first or say results are unverified).
+2. **Certified UDFs** in [metric_udfs.sql](metric_udfs.sql) — `pods_failure_pressure_b31g_mod`, `pods_erf`, `pods_pct_smys`, `pods_depth_in`, `pods_depth_in_tol` (conservative depth).
+3. **Ranked views** in [views.sql](views.sql) — `v_anomaly_severity`, `v_anomaly_clusters`, `v_cluster_severity`, `v_dig_candidates` (cluster- and tool-aware).
 4. **Parameterized examples** in [examples.sql](examples.sql).
 5. **Raw tables** — last resort, after units/run/attributes confirmed.
 
@@ -73,10 +75,14 @@ For HCA overlap / consequence, use `pods-consequence-hca`. For the route-measure
 ## What NOT to do
 
 - **Don't rank "worst" by raw depth.** Use ERF / predicted failure pressure. A long shallow corrosion can outrank a deep pit.
+- **Don't pick the latest run overall for a metal-loss question.** Pick the latest **MFL/UT** run (`v_latest_metal_loss_run`) — a later caliper/EMAT run finds different things.
+- **Don't assess clustered/adjacent corrosion as independent features.** Use `v_cluster_severity`; interacting metal loss is under-called when assessed alone.
+- **Don't assess on call depth silently.** If tool tolerance is unknown, say "call-depth only, not tolerance-adjusted."
 - **Don't union runs across vintages** for a current-state question. Pick one; say which.
 - **Don't compare runs from different tools** without the comparability warning.
 - **Don't hand-write B31G/RSTRENG.** Use the UDFs or a certified stored column.
 - **Don't compute ERF on cracks, dents, or dents-with-metal-loss** with the metal-loss B31G UDF — it's for blunt metal loss only. Flag those feature types for a different method.
+- **Don't present response classes as compliance.** They're illustrative; tie to 49 CFR 195.452(h) / 192.933 + B31.8S and the operator's IM criteria.
 - **Don't declare a segment safe / fit-for-service.** Screen, rank, and hand off to the engineer.
 - **Don't default the safety factor silently.**
 
@@ -85,7 +91,7 @@ For HCA overlap / consequence, use `pods-consequence-hca`. For the route-measure
 - [schema.md](schema.md) — ILI anomaly + run columns (canonical → glossary)
 - [gotchas.md](gotchas.md) — ERF vs depth, vendor comparability, B31G limits, box-matching
 - [examples.sql](examples.sql) — parameterized severity / dig-list / run-comparison queries
-- [views.sql](views.sql) — `v_anomaly_severity`, `v_dig_candidates`
+- [views.sql](views.sql) — `v_anomaly_severity`, `v_anomaly_clusters`, `v_cluster_severity`, `v_dig_candidates`
 - [metric_udfs.sql](metric_udfs.sql) — **Trusted Asset functions**: UC SQL functions you register once so Genie Spaces call them as *certified, governed metrics* (e.g. ERF / remaining-strength / range-overlap) instead of regenerating ad-hoc SQL. Register via `pods-setup` or by running the file, then reference the functions by name.
 - ASME B31G (Modified) — remaining strength of corroded pipelines
 - PHMSA HL integrity management: `https://www.phmsa.dot.gov/pipeline/hazardous-liquid-integrity-management/hl-im-fact-sheet`

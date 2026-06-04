@@ -3,8 +3,9 @@
   "expected_skill": "pods-ili-integrity",
   "expected_behavior": [
     "Loads pods-ili-integrity",
-    "Ranks by ERF / predicted failure pressure via the Trusted Asset function, NOT raw depth",
-    "Applies Modified B31G / RSTRENG remaining-strength screening",
-    "Returns dig candidates located by route + measure"
+    "Ranks by CONSERVATIVE (tolerance-adjusted) ERF via the Trusted Asset function, NOT raw depth",
+    "Selects the latest METAL-LOSS (MFL/UT) run, not the latest run overall",
+    "Assesses interacting/adjacent corrosion as clusters (v_cluster_severity), not independent features",
+    "States assumptions (run, tolerance basis, safety factor) and treats response classes as illustrative, not compliance"
   ]
 }

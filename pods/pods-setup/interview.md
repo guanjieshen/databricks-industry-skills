@@ -26,6 +26,10 @@ For each answer capture: (a) the customer's physical table/column, (b) the canon
 5. **"Which table holds the ILI runs, with run date, vendor, and tool type (MFL/UT/EMAT)?"**
    - Needed for latest-run selection and cross-run comparability warnings
 
+5b. **"What is each ILI tool's depth tolerance (± %wall, at what confidence), and is it recorded per run/vendor/tool or a known spec? Which tools count as metal-loss tools (MFL, UT, …)?"**
+   - Map tolerance to canonical `tool_tolerance_pct_wall`; capture the metal-loss tool-type set
+   - Tolerance enables conservative (POE) depth; the tool set drives `v_latest_metal_loss_run`. If tolerance unknown, assessments fall back to call depth and say so
+
 ## Batch 3 — Pipe attributes for integrity math
 
 6. **"Where are pipe physical attributes — outer diameter (OD), wall thickness, SMYS / grade, MAOP? Per segment or per route?"**
@@ -50,9 +54,17 @@ For each answer capture: (a) the customer's physical table/column, (b) the canon
 11. **"Any known data-quality issues — station equations/restarts, recalibrations between runs, segments with reversed measures?"**
     - Feeds `pods-data-quality` and tolerance choices
 
+## Batch 6 — Integrity assessment configuration
+
+12. **"For interacting/clustered corrosion, what spacing rule do you use to decide features interact (e.g. 3× wall, 6× wall, a fixed distance)?"**
+    - Drives the `v_anomaly_clusters` interaction window (default 3× wall if unknown)
+
+13. **"What ERF / predicted-failure-pressure thresholds and safety factor define your immediate / scheduled / monitor response classes, per your IM program and 49 CFR (195.452(h) liquid / 192.933 + B31.8S gas)?"**
+    - Parameterizes the dig examples; never default the safety factor or thresholds silently — these are operator + regulatory criteria
+
 ## Closing
 
-12. **"Any pipeline term you use daily that wouldn't make sense reading PODS docs cold? Anything that's tripped up past data work?"**
+14. **"Any pipeline term you use daily that wouldn't make sense reading PODS docs cold? Anything that's tripped up past data work?"**
     - Tribal knowledge catch-all
 
 ---
@@ -77,10 +89,18 @@ Save as `answers.json` (consumed by `generate_glossary.py`):
                 "depth_pct": "depth_pct", "length_in": "length_in", "feature_type": "feat_type"},
     "erf_stored": false,
     "runs_table": "integrity.ili_runs",
-    "run_columns": {"run_id": "insp_id", "run_date": "run_date", "vendor": "vendor", "tool_type": "tool"}
+    "run_columns": {"run_id": "insp_id", "run_date": "run_date", "vendor": "vendor", "tool_type": "tool",
+                    "tool_tolerance_pct_wall": "depth_tol_pct"},
+    "metal_loss_tool_types": ["MFL", "UT"],
+    "tool_tolerance_pct_wall": {"MFL": 10.0, "UT": 5.0}
   },
   "pipe_attributes": {"table": "engineering.pipe_segments",
                       "od_in": "od_inches", "wt_in": "wall_thk_in", "smys_psi": "smys", "maop_psig": "maop"},
+  "integrity_assessment": {
+    "interaction_window_rule": "3x_wall",
+    "safety_factor": 1.39,
+    "response_thresholds": {"immediate_erf": 1.0, "scheduled_erf": 0.8}
+  },
   "modules_adopted": ["ILI", "IR", "CP"],
   "lines": {"Line 4": ["L04"], "the 30-inch": ["L04"], "river crossing": ["L04-RC"]},
   "flow_direction": "increasing_measure_is_downstream",

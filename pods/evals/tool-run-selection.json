@@ -1,0 +1,10 @@
+{
+  "query": "show me the metal loss on line 4 from the most recent inspection",
+  "expected_skill": "pods-ili-integrity",
+  "expected_behavior": [
+    "Loads pods-ili-integrity",
+    "Selects the latest METAL-LOSS run (MFL/UT) via v_latest_metal_loss_run, NOT the latest run overall",
+    "Does not silently use a more recent caliper/geometry or EMAT run that carries no metal loss",
+    "States which run (date, vendor, tool) it used"
+  ]
+}

@@ -31,9 +31,33 @@ CREATE OR REPLACE FUNCTION {{catalog}}.{{metrics_schema}}.pods_depth_in(
     wt_in DOUBLE     COMMENT 'Nominal wall thickness (inches).'
 )
 RETURNS DOUBLE
-COMMENT 'Defect depth in inches from percent-of-wall metal loss. NULL if inputs invalid.'
+COMMENT 'Defect depth in inches from percent-of-wall metal loss (CALL depth, no tolerance). NULL if inputs invalid.'
 RETURN CASE WHEN depth_pct IS NULL OR wt_in IS NULL OR wt_in <= 0 THEN NULL
             ELSE (depth_pct / 100.0) * wt_in END;
+
+
+-- -----------------------------------------------------------------------------
+-- pods_depth_in_tol — tolerance-adjusted (conservative) depth in inches
+-- -----------------------------------------------------------------------------
+-- ILI tools report depth with a specified accuracy (e.g. +/- 10% wall at 80%
+-- confidence for MFL). Dig prioritization should assess on an UPPER-BOUND depth,
+-- not the call depth, or it under-sizes features. Upper-bound %wall =
+-- depth_pct + tol_pct_wall, capped at 100% (=> capped at wall thickness).
+-- Pass the tool's tolerance as +/- percent OF WALL (e.g. 10), from the runs
+-- dim / glossary. If tolerance is unknown, callers should fall back to
+-- pods_depth_in (call depth) and SAY SO — do not silently assume zero tolerance.
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION {{catalog}}.{{metrics_schema}}.pods_depth_in_tol(
+    depth_pct DOUBLE     COMMENT 'Reported (call) metal loss as percent of wall (0-100).',
+    wt_in DOUBLE         COMMENT 'Nominal wall thickness (inches).',
+    tol_pct_wall DOUBLE  COMMENT 'ILI tool tolerance as +/- percent OF WALL (e.g. 10). From runs dim / glossary.'
+)
+RETURNS DOUBLE
+COMMENT 'Conservative (upper-bound) defect depth in inches = (min(depth_pct + tol_pct_wall, 100))/100 * wt. Use for dig prioritization. NULL if inputs invalid.'
+RETURN CASE
+    WHEN depth_pct IS NULL OR wt_in IS NULL OR tol_pct_wall IS NULL OR wt_in <= 0 THEN NULL
+    ELSE (least(depth_pct + tol_pct_wall, 100.0) / 100.0) * wt_in
+END;
 
 
 -- -----------------------------------------------------------------------------
@@ -64,6 +88,8 @@ END;
 --   Pf = (2 * S_flow * t / D) * (1 - 0.85*(d/t)) / (1 - 0.85*(d/t)/M)
 -- Assumptions: blunt corrosion metal loss only (NOT cracks, dents, gouges,
 -- or dents-with-metal-loss). Screening estimate. Validate before action.
+-- For conservative (tolerance-adjusted) assessment, pass pods_depth_in_tol(...)
+-- as `depth_in` rather than the call-depth pods_depth_in(...).
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION {{catalog}}.{{metrics_schema}}.pods_failure_pressure_b31g_mod(
     od_in DOUBLE, wt_in DOUBLE, depth_in DOUBLE, length_in DOUBLE, smys_psi DOUBLE
@@ -76,21 +102,28 @@ RETURN (
             od_in AS d, wt_in AS t, depth_in AS dep, length_in AS len,
             (smys_psi + 10000.0) AS s_flow,
             CASE WHEN od_in > 0 AND wt_in > 0 THEN (length_in * length_in) / (od_in * wt_in) END AS z
-        )
+    ),
+    m AS (
+        SELECT p.*,
+            CASE WHEN z <= 50.0 THEN sqrt(1.0 + 0.6275 * z - 0.003375 * z * z)
+                 ELSE 0.032 * z + 3.3 END AS m_folias
+        FROM p
+    )
     SELECT CASE
         WHEN d IS NULL OR t IS NULL OR dep IS NULL OR len IS NULL OR s_flow IS NULL
              OR t <= 0 OR d <= 0 OR dep < 0 THEN NULL
         -- B31G is not valid for very deep defects; return NULL to force engineer review.
         WHEN (dep / t) >= 0.80 THEN NULL
+        -- Defensive: a non-positive denominator means the geometry is outside the
+        -- model's valid range; return NULL rather than a nonsensical pressure.
+        WHEN (1.0 - 0.85 * (dep / t) / m_folias) <= 0 THEN NULL
         ELSE (
             2.0 * s_flow * t / d
             * (1.0 - 0.85 * (dep / t))
-            / (1.0 - 0.85 * (dep / t) / (CASE WHEN z <= 50.0
-                                              THEN sqrt(1.0 + 0.6275 * z - 0.003375 * z * z)
-                                              ELSE 0.032 * z + 3.3 END))
+            / (1.0 - 0.85 * (dep / t) / m_folias)
         )
     END
-    FROM p
+    FROM m
 );
 
 
@@ -121,6 +154,7 @@ END;
 -- Grants (uncomment + substitute principal)
 -- =============================================================================
 -- GRANT EXECUTE ON FUNCTION {{catalog}}.{{metrics_schema}}.pods_depth_in                  TO `{{principal}}`;
+-- GRANT EXECUTE ON FUNCTION {{catalog}}.{{metrics_schema}}.pods_depth_in_tol              TO `{{principal}}`;
 -- GRANT EXECUTE ON FUNCTION {{catalog}}.{{metrics_schema}}.pods_pct_smys                  TO `{{principal}}`;
 -- GRANT EXECUTE ON FUNCTION {{catalog}}.{{metrics_schema}}.pods_failure_pressure_b31g_mod TO `{{principal}}`;
 -- GRANT EXECUTE ON FUNCTION {{catalog}}.{{metrics_schema}}.pods_erf                       TO `{{principal}}`;

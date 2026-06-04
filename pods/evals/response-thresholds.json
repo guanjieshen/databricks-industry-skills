@@ -1,0 +1,11 @@
+{
+  "query": "which anomalies on line 7 are immediate repair conditions?",
+  "expected_skill": "pods-ili-integrity",
+  "expected_behavior": [
+    "Loads pods-ili-integrity",
+    "Ranks by conservative ERF and presents response classes as ILLUSTRATIVE, not a compliance determination",
+    "Ties criteria to 49 CFR 195.452(h) / 192.933 + B31.8S and the operator's IM thresholds",
+    "Asks for / uses the operator's confirmed safety factor and thresholds rather than defaulting silently",
+    "Does not declare a segment safe / fit-for-service"
+  ]
+}

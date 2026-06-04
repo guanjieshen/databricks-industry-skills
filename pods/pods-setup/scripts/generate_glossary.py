@@ -27,10 +27,9 @@ description: |
   column, which modules are adopted, the route key, and business jargon (line
   and segment names). Use whenever a PODS / pipeline-integrity question touches
   {customer_proper} data. Compose with the pods-* enterprise skills.
-tags:
-  - data-source:pods
-  - tier:workspace
-  - customer:{customer}
+metadata:
+  version: "0.1.0"
+parent: pods-overview
 ---
 
 # {customer_proper} — PODS Glossary
@@ -90,6 +89,30 @@ def _section_ili(ili: dict) -> str:
     rcols = ili.get("run_columns", {})
     if rcols:
         body += "- **Run columns**: " + ", ".join(f"{k}=`{v}`" for k, v in rcols.items()) + "\n"
+    mlt = ili.get("metal_loss_tool_types", [])
+    if mlt:
+        body += "- **Metal-loss tools** (latest-run selection): " + ", ".join(f"`{t}`" for t in mlt) + "\n"
+    tol = ili.get("tool_tolerance_pct_wall", {})
+    if tol:
+        body += "- **Tool tolerance (±%wall)**: " + ", ".join(f"{k}={v}" for k, v in tol.items()) + "\n"
+    else:
+        body += "- **Tool tolerance**: _not captured — assessments fall back to call depth_\n"
+    return body.rstrip()
+
+
+def _section_integrity(cfg: dict) -> str:
+    body = "## Integrity assessment configuration\n\n"
+    if not cfg:
+        return body + ("_(not captured — defaults: 3× wall clustering; confirm safety factor and "
+                       "response thresholds before any dig query — never default them silently)_")
+    body += f"- **Interaction window**: {cfg.get('interaction_window_rule', '3x_wall (default)')}\n"
+    sf = cfg.get("safety_factor")
+    body += f"- **Safety factor (ERF)**: {sf if sf is not None else '_unknown — confirm, do not default_'}\n"
+    rt = cfg.get("response_thresholds", {})
+    if rt:
+        body += ("- **Response thresholds (ILLUSTRATIVE — tie to 49 CFR 195.452(h)/192.933 + B31.8S and "
+                 f"the IM program)**: immediate ERF ≥ {rt.get('immediate_erf', '?')}, "
+                 f"scheduled ERF ≥ {rt.get('scheduled_erf', '?')}\n")
     return body.rstrip()
 
 
@@ -135,6 +158,7 @@ SECTIONS = [
     ("measure_units", _section_units, {}),
     ("ili", _section_ili, {}),
     ("pipe_attributes", _section_pipe_attrs, {}),
+    ("integrity_assessment", _section_integrity, {}),
     ("modules_adopted", _section_modules, []),
     ("lines", _section_lines, {}),
     ("flow_direction", _section_flow, ""),

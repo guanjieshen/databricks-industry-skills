@@ -8,15 +8,34 @@
 -- =============================================================================
 
 
--- Latest ILI run per route — the default vintage for "current state" questions.
+-- Latest ILI run per route PER TOOL TYPE. Tool types (MFL/UT/EMAT/caliper) run
+-- separately and find different things — never pick "the latest run overall" for
+-- a tool-specific question. This view keeps one latest run per (route, tool).
 CREATE OR REPLACE VIEW {{catalog}}.{{gold_schema}}.v_latest_ili_run
-COMMENT 'Most recent ILI run per route, with vendor/tool for comparability.'
+COMMENT 'Most recent ILI run per route PER tool_type. Use the row matching the tool relevant to the question (e.g. MFL/UT for metal loss).'
+AS
+SELECT route_id, run_id, run_date, vendor, tool_type
+FROM (
+    SELECT r.*,
+           ROW_NUMBER() OVER (PARTITION BY route_id, tool_type ORDER BY run_date DESC) AS rn
+    FROM {{catalog}}.{{silver_schema}}.silver_ili_runs r
+)
+WHERE rn = 1;
+
+
+-- Latest METAL-LOSS run per route — the correct vintage for ERF / B31G / dig
+-- questions. Metal-loss tools are MFL and UT by default; make the set
+-- glossary-configurable per operator (some use WM/MFL variants).
+CREATE OR REPLACE VIEW {{catalog}}.{{gold_schema}}.v_latest_metal_loss_run
+COMMENT 'Most recent metal-loss (MFL/UT) ILI run per route. The vintage pods-ili-integrity should use for ERF/B31G/dig questions.'
 AS
 SELECT route_id, run_id, run_date, vendor, tool_type
 FROM (
     SELECT r.*,
            ROW_NUMBER() OVER (PARTITION BY route_id ORDER BY run_date DESC) AS rn
     FROM {{catalog}}.{{silver_schema}}.silver_ili_runs r
+    -- Customer-specific metal-loss tool set — replace via the workspace glossary.
+    WHERE upper(r.tool_type) IN ('MFL', 'UT')
 )
 WHERE rn = 1;
 
@@ -38,6 +57,7 @@ SELECT
     r.run_date,
     r.vendor,
     r.tool_type,
+    r.tool_tolerance_pct_wall,   -- +/- %wall tool accuracy; nullable, sourced in pods-setup
     p.od_in,
     p.wt_in,
     p.smys_psi,

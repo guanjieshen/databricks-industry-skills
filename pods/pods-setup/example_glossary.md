@@ -11,10 +11,9 @@ description: |
   column, adopted modules, the route key, and business jargon. Use whenever a
   PODS / pipeline-integrity question touches Acme Midstream data. Compose with
   the pods-* enterprise skills.
-tags:
-  - data-source:pods
-  - tier:workspace
-  - customer:acme-midstream
+metadata:
+  version: "0.1.0"
+parent: pods-overview
 ---
 
 # Acme Midstream — PODS Glossary
