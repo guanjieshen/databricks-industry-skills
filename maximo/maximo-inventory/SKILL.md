@@ -9,17 +9,9 @@ description: |
   "storeroom", "INVENTORY", "INVBALANCES", "MATUSETRANS", "ITEM", "ABC
   analysis", "dead stock", "inventory turns", "parts availability for WO",
   "kit explosion", "reservation backlog", "carrying cost".
-tags:
-  - data-source:ibm-maximo
-  - tier:module
-  - module:inventory
-  - industry:oil-and-gas
-  - industry:utilities
-  - industry:mining
-  - industry:manufacturing
-  - persona:materials-specialist
-  - persona:analyst
-  - persona:da-platform
+metadata:
+  version: "0.1.0"
+parent: maximo-overview
 ---
 
 # Maximo Inventory

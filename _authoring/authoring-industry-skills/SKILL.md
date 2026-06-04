@@ -158,6 +158,21 @@ Match prescriptiveness to fragility:
 Provide a **default, not a menu**. One recommended tool/pattern with a brief escape
 hatch beats listing five options.
 
+## Repo rule: writing to existing objects requires explicit user permission
+
+**Any skill or script that modifies existing tables, data, or metadata MUST get the
+user's explicit approval first — it must never write as a side effect.** This covers
+UC comments (`COMMENT ON` / `ALTER TABLE … ALTER COLUMN`), and any
+`ALTER`/`DROP`/`UPDATE`/`DELETE`/`MERGE`/`INSERT OVERWRITE` or schema-changing SQL on
+objects the customer already owns.
+
+- **Scripts that write must default to a no-op preview** — print the exact statements
+  and write nothing — and require an explicit flag (e.g. `--apply`) to execute. The
+  pattern: [`../../maximo/maximo-setup/scripts/apply_uc_comments.py`](../../maximo/maximo-setup/scripts/apply_uc_comments.py) (preview by default, `--apply` to write).
+- **Skills must show the preview/diff and ask for confirmation** before the apply step.
+- **Creating brand-new objects** in a scratch/demo schema is fine without this gate —
+  the rule is about touching things the customer already owns.
+
 ## New-skill workflow
 
 Copy this checklist into your working notes and check off as you go:
@@ -172,6 +187,7 @@ Copy this checklist into your working notes and check off as you go:
 - [ ] Reference files >100 lines have a ## Contents ToC
 - [ ] Metrics shipped as Trusted Asset UC functions where applicable
 - [ ] At least 3 evals added under <source>/evals/
+- [ ] Any write to existing tables/data/metadata is preview-by-default + gated on explicit user approval (no side-effect writes)
 - [ ] Verified discovery in a NEW Agent-mode chat (did the right skill load? any false triggers?)
 ```
 
@@ -194,7 +210,7 @@ for the format.
   what it would otherwise get **wrong**.
 - Don't duplicate a skill that exists in `databricks/databricks-agent-skills`
   (e.g. core CLI/auth/exploration) — set `parent: databricks-core` and build on it.
-- Don't write UC comments or run destructive SQL without showing the diff first.
+- **Never modify existing tables/data/metadata** (UC comments, `ALTER`/`DROP`/`UPDATE`/`DELETE`/`MERGE`, schema changes) without **explicit user permission** — preview first, gate execution behind an `--apply`-style flag, then ask. See *Repo rule* above.
 - Don't include time-sensitive text ("after August 2025…") — use an "old patterns" note instead.
 
 ## References

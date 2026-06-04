@@ -2,8 +2,8 @@
 maximo-setup interview to confirm.
 
 Built on the repo's cross-cutting `data-exploration` skill: it shells out to
-`databricks experimental aitools tools` to find tables via information_schema and
-discover each table's schema + null counts + row counts, then extracts the
+`databricks experimental aitools tools` to find tables + columns via
+information_schema and compute row/null stats, then extracts the
 data-PROVABLE facts:
   - distinct WOCLASS / STATUS / WORKTYPE values on WORKORDER
   - the SITEID list, the ASSET.CLASSSTRUCTUREID list
@@ -27,7 +27,11 @@ Usage (in-workspace):
 Usage (local):
     python introspect_schema.py --catalog eam --schema maximo_silver --profile my-workspace --output draft_profile.json
 
-Requires Databricks CLI >= v0.294.0 (experimental aitools).
+Runtime: needs Python + the Databricks CLI (>= v0.294.0, experimental aitools) —
+available in a workspace/serverless Genie Code session or locally. If Genie Code is
+attached to a SQL WAREHOUSE only (e.g. started from the Unity Catalog data page),
+Python/CLI may be unavailable — use the portable SQL profiler `profile_queries.sql`
+instead; it returns the same facts and is the source of truth.
 """
 from __future__ import annotations
 
@@ -101,11 +105,37 @@ def find_tables(catalog: str, schema: str, profile: str | None) -> list[str]:
     return [r["table_name"] for r in rows if r.get("table_name")]
 
 
-def discover(fqtn: str, profile: str | None) -> dict:
-    out = _aitools(["discover-schema", fqtn], profile)
-    # discover-schema returns one table's info; normalize to a dict.
-    if isinstance(out, list):
-        return out[0] if out else {}
+def columns_of(catalog: str, schema: str, table_actual: str, profile: str | None) -> list[str]:
+    """Column names for a table via information_schema (clean JSON, unlike discover-schema)."""
+    sql = (
+        "SELECT column_name FROM system.information_schema.columns "
+        f"WHERE table_catalog = '{catalog}' AND table_schema = '{schema}' "
+        f"AND table_name = '{table_actual}' ORDER BY ordinal_position"
+    )
+    return [r["column_name"] for r in _query(sql, profile) if r.get("column_name")]
+
+
+def _row_count(fqtn: str, profile: str | None) -> int:
+    rows = _query(f"SELECT COUNT(*) AS n FROM {fqtn}", profile)
+    return int(rows[0]["n"]) if rows else 0
+
+
+def _high_null_columns(fqtn: str, columns: list[str], row_count: int, profile: str | None) -> list[str]:
+    """Columns whose null fraction exceeds HIGH_NULL_FRACTION, computed in one scan."""
+    if not columns or not row_count:
+        return []
+    exprs = ", ".join(
+        f"SUM(CASE WHEN `{c}` IS NULL THEN 1 ELSE 0 END) AS n_{i}" for i, c in enumerate(columns)
+    )
+    rows = _query(f"SELECT {exprs} FROM {fqtn}", profile)
+    if not rows:
+        return []
+    r = rows[0]
+    out = []
+    for i, c in enumerate(columns):
+        n = r.get(f"n_{i}")
+        if n is not None and (int(n) / row_count) > HIGH_NULL_FRACTION:
+            out.append(c)
     return out
 
 
@@ -184,29 +214,21 @@ def build_draft(catalog: str, schema: str, profile: str | None) -> dict:
 
     # --- custom-column detection + null stats on the core MBOs ----------------
     for table_upper in ("WORKORDER", "ASSET", "LOCATIONS"):
-        fqtn = fq(table_upper)
-        if not fqtn or table_upper not in base_cols:
+        actual = present_upper.get(table_upper)
+        if not actual or table_upper not in base_cols:
             continue
+        fqtn = f"{catalog}.{schema}.{actual}"
         try:
-            info = discover(fqtn, profile)
+            cols = columns_of(catalog, schema, actual, profile)
+            rc = _row_count(fqtn, profile)
+            custom = [c for c in cols if c.upper() not in base_cols[table_upper]]
+            high_null = _high_null_columns(fqtn, cols, rc, profile)
         except RuntimeError as e:
-            draft["errors"].append(f"discover {table_upper}: {e}")
+            draft["errors"].append(f"profile {table_upper}: {e}")
             continue
-        cols = info.get("columns", [])
-        row_count = info.get("row_count")
-        custom, high_null = [], []
-        for c in cols:
-            name = c.get("name", "")
-            if name.upper() not in base_cols[table_upper]:
-                custom.append(name)
-            null_frac = c.get("null_fraction")
-            if null_frac is None and row_count and c.get("null_count") is not None:
-                null_frac = c["null_count"] / row_count if row_count else None
-            if null_frac is not None and null_frac > HIGH_NULL_FRACTION:
-                high_null.append(name)
         if custom:
             draft["custom_columns"][table_upper] = custom
-        draft["stats"][table_upper] = {"row_count": row_count, "high_null_columns": high_null}
+        draft["stats"][table_upper] = {"row_count": rc, "high_null_columns": high_null}
 
     # --- interview gap list (the un-inferable semantics) ----------------------
     draft["gaps_for_interview"] += [

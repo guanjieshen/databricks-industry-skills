@@ -3,12 +3,18 @@
 Reads a JSON file describing the canonical Maximo MBO descriptions and runs
 `ALTER TABLE ... ALTER COLUMN ... COMMENT '...'` against the customer's UC.
 
+SAFETY: this is a PREVIEW (dry run) by default — it prints the COMMENT/ALTER
+statements and writes NOTHING. It modifies Unity Catalog ONLY when you pass
+--apply, which must never be used without the user's explicit approval of the
+previewed statements.
+
 Usage:
-    python apply_uc_comments.py \
-        --catalog eam \
-        --schema maximo_silver \
-        --comments-file maximo_comments.json \
-        [--dry-run]
+    # 1) preview (default — safe, no writes). Show this to the user:
+    python apply_uc_comments.py --catalog eam --schema maximo_silver \
+        --comments-file maximo_comments.json
+    # 2) ONLY after the user explicitly approves, apply for real:
+    python apply_uc_comments.py --catalog eam --schema maximo_silver \
+        --comments-file maximo_comments.json --apply --warehouse-id <id>
 
 The comments file shape (see maximo_comments.json):
 
@@ -34,43 +40,18 @@ from pathlib import Path
 from databricks.sdk import WorkspaceClient
 
 
-def apply_comments(
-    client: WorkspaceClient,
-    warehouse_id: str,
-    catalog: str,
-    schema: str,
-    comments: dict,
-    dry_run: bool,
-) -> int:
-    """Returns the number of statements executed (or that would have been)."""
+def build_statements(catalog: str, schema: str, comments: dict) -> list[str]:
+    """Build the COMMENT/ALTER statements (no execution)."""
     statements: list[str] = []
-
     for table_name, spec in comments.items():
         fq = f"`{catalog}`.`{schema}`.`{table_name}`"
-
         if "table_comment" in spec:
-            statements.append(
-                f"COMMENT ON TABLE {fq} IS {sql_literal(spec['table_comment'])}"
-            )
-
+            statements.append(f"COMMENT ON TABLE {fq} IS {sql_literal(spec['table_comment'])}")
         for col, col_comment in spec.get("columns", {}).items():
             statements.append(
                 f"ALTER TABLE {fq} ALTER COLUMN `{col}` COMMENT {sql_literal(col_comment)}"
             )
-
-    if dry_run:
-        for s in statements:
-            print(f"-- [dry-run]\n{s};\n")
-        return len(statements)
-
-    for s in statements:
-        client.statement_execution.execute_statement(
-            warehouse_id=warehouse_id,
-            statement=s,
-            wait_timeout="30s",
-        )
-    print(f"applied {len(statements)} comment statements to {catalog}.{schema}")
-    return len(statements)
+    return statements
 
 
 def sql_literal(s: str) -> str:
@@ -78,27 +59,37 @@ def sql_literal(s: str) -> str:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Apply UC comments to Maximo Silver tables.")
+    parser = argparse.ArgumentParser(
+        description="Preview (default) or apply UC comments on Maximo Silver tables. PREVIEW writes nothing.")
     parser.add_argument("--catalog", required=True)
     parser.add_argument("--schema", required=True)
     parser.add_argument("--comments-file", required=True, type=Path)
-    parser.add_argument("--warehouse-id", help="SQL warehouse ID for executing comment DDL. Required unless --dry-run.")
-    parser.add_argument("--dry-run", action="store_true", help="Print statements instead of executing.")
+    parser.add_argument("--apply", action="store_true",
+                        help="Write the comments to Unity Catalog. Use ONLY after the user explicitly approves the preview. Omit to preview.")
+    parser.add_argument("--warehouse-id", help="SQL warehouse ID. Required with --apply.")
     args = parser.parse_args()
 
     comments = json.loads(args.comments_file.read_text())
-    print(f"loaded {len(comments)} tables from {args.comments_file}")
+    statements = build_statements(args.catalog, args.schema, comments)
+    print(f"loaded {len(comments)} tables from {args.comments_file}; {len(statements)} comment statements\n")
 
-    if args.dry_run:
-        apply_comments(None, "", args.catalog, args.schema, comments, dry_run=True)
+    if not args.apply:
+        print("PREVIEW ONLY — no changes written. Review these with the user, then re-run with "
+              "--apply --warehouse-id <id> ONLY after they approve:\n")
+        for s in statements:
+            print(f"{s};\n")
         return 0
 
     if not args.warehouse_id:
-        print("--warehouse-id required for non-dry-run execution", file=sys.stderr)
+        print("--warehouse-id is required with --apply", file=sys.stderr)
         return 2
 
     client = WorkspaceClient()
-    apply_comments(client, args.warehouse_id, args.catalog, args.schema, comments, dry_run=False)
+    for s in statements:
+        client.statement_execution.execute_statement(
+            warehouse_id=args.warehouse_id, statement=s, wait_timeout="30s",
+        )
+    print(f"applied {len(statements)} comment statements to {args.catalog}.{args.schema}")
     return 0
 
 

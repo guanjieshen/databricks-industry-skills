@@ -9,18 +9,9 @@ description: |
   cost", "cost per asset", "ACTLABCOST", "ACTMATCOST", "cost variance",
   "budget vs actual", "PM vs CM cost", "contractor spend", "cost of failure",
   "cost trend", "spend by site", "labor cost", "material cost", "cost rollup".
-tags:
-  - data-source:ibm-maximo
-  - tier:module
-  - module:maintenance-cost
-  - industry:oil-and-gas
-  - industry:utilities
-  - industry:mining
-  - industry:manufacturing
-  - persona:maintenance-manager
-  - persona:finance-controller
-  - persona:reliability-engineer
-  - persona:da-platform
+metadata:
+  version: "0.1.0"
+parent: maximo-overview
 ---
 
 # Maximo Maintenance Cost

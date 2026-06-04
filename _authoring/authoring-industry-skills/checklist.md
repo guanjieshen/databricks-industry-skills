@@ -43,6 +43,11 @@ Run this before merging any new or changed skill. Load
 - [ ] CLI examples rely on ambient in-workspace auth (no `--profile`; that's local-only)
 - [ ] MCP tools, if any, are fully qualified (`ServerName:tool_name`)
 
+## Safety — writes to existing objects
+- [ ] No write to existing tables/data/metadata happens as a side effect
+- [ ] Writing scripts default to preview (no-op) and require an explicit `--apply`-style flag
+- [ ] The skill shows the preview/diff and asks for explicit user approval before applying
+
 ## Evals & verification
 - [ ] ≥3 eval cases added under `<source>/evals/`
 - [ ] Verified in a NEW Agent-mode chat: the right skill loads, no false triggers

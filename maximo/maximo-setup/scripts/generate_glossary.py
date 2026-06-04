@@ -4,7 +4,9 @@ Usage:
     python generate_glossary.py \
         --customer northstar \
         --answers answers.json \
-        --output /Workspace/.assistant/skills/northstar-maximo-glossary/SKILL.md
+        --output /Workspace/.assistant/skills/maximo/northstar-maximo-glossary/SKILL.md
+        # Write into the maximo/ group folder so the glossary sits beside the family
+        # (use /Users/<email>/.assistant/skills/maximo/... for a user-scoped install).
 
 The answers.json shape is documented in interview.md.
 """

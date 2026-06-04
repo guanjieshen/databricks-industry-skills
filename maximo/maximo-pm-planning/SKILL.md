@@ -9,17 +9,9 @@ description: |
   "craft workload", "PM coverage", "JOBPLAN", "JPLABOR", "JPMATERIAL",
   "route optimization", "PM schedule", "next PM due", "PM-to-CM ratio",
   "PM planning", "weekly PM workload".
-tags:
-  - data-source:ibm-maximo
-  - tier:module
-  - module:pm-planning
-  - industry:oil-and-gas
-  - industry:utilities
-  - industry:mining
-  - industry:manufacturing
-  - persona:maintenance-planner
-  - persona:reliability-engineer
-  - persona:da-platform
+metadata:
+  version: "0.1.0"
+parent: maximo-overview
 ---
 
 # Maximo PM Planning
