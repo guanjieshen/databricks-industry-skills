@@ -37,6 +37,12 @@ Every data-source family should follow this layout:
 | `*-data-engineering` | Silver/Gold modeling patterns | Data engineering / pipeline questions |
 | `*-data-quality` | Diagnostic playbook for data quality issues | "This number looks wrong" investigations |
 
+### When a skill is universal (not data-source-specific)
+
+If a skill is cross-cutting — useful regardless of which data source the user is working with — it belongs in **`_common/`** at the repo root, **not** in a data-source family. Example: `_common/data-exploration/` covers `databricks experimental aitools tools` for any table in any catalog.
+
+Rule of thumb: if the skill never references one specific data source's tables or jargon, it's a `_common/` skill. If it teaches Genie about a particular vendor's schema, it belongs in that vendor's family.
+
 ### Module tier (one per Maximo module / SAP transaction / Salesforce object / etc.)
 
 Modules are the domain-specific specializations. Examples:

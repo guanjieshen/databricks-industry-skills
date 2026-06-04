@@ -15,6 +15,8 @@ The same shape applies to every supported data source: load the family once, and
 ```
 databricks-industry-skills/
 ├── README.md            ← this file
+├── _common/             ← cross-cutting skills used regardless of data source
+│   └── data-exploration/
 ├── _template/           ← canonical skill skeleton (fork to start a new data-source family)
 └── <data-source>/       ← one folder per supported data source
     ├── README.md        ← family overview, persona map, install order
@@ -23,6 +25,12 @@ databricks-industry-skills/
     │   └── ... supporting files
     └── ...
 ```
+
+Cross-cutting skills (universal, not tied to one data source):
+
+| Skill | Status | What it does |
+|---|---|---|
+| [`_common/data-exploration/`](./_common/data-exploration/) | shipped | Discover tables and run SQL queries using `databricks experimental aitools tools` |
 
 Currently shipped data-source families:
 
@@ -47,6 +55,12 @@ Each family folder is self-contained — install only the families you need.
 # clone the repo
 git clone https://github.com/guanjieshen/databricks-industry-skills.git
 
+# install the common skills (recommended)
+databricks workspace import-dir \
+  databricks-industry-skills/_common \
+  /Workspace/.assistant/skills/ \
+  --overwrite
+
 # install one family (e.g., maximo)
 databricks workspace import-dir \
   databricks-industry-skills/maximo \
@@ -57,6 +71,11 @@ databricks workspace import-dir \
 ### Option 2: user-scoped install (just for you)
 
 ```bash
+databricks workspace import-dir \
+  databricks-industry-skills/_common \
+  /Workspace/Users/<your-email>/.assistant/skills/ \
+  --overwrite
+
 databricks workspace import-dir \
   databricks-industry-skills/maximo \
   /Workspace/Users/<your-email>/.assistant/skills/ \

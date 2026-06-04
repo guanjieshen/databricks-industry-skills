@@ -46,7 +46,8 @@ Neither persona is a Maximo specialist.
 
 ## Install order (recommended)
 
-1. Install `maximo-overview` first — it orients Genie for everything else.
+0. Install [`_common/data-exploration`](../_common/data-exploration/) — universal data-discovery patterns (`databricks experimental aitools tools query` / `discover-schema`). Pairs naturally with Maximo skills: `_common/data-exploration` provides the *mechanics* of exploring tables; the Maximo skills provide the *domain knowledge* about which tables are which MBOs.
+1. Install `maximo-overview` next — it orients Genie for everything else in the Maximo family.
 2. Run `maximo-setup` once per customer — it creates the workspace-tier glossary skill that the other skills reference.
 3. Install whichever module skills match the customer's primary use cases.
 
