@@ -88,8 +88,25 @@ RETURN (
 -- -----------------------------------------------------------------------------
 -- pm_compliance — Preventive Maintenance Compliance
 -- -----------------------------------------------------------------------------
--- Default: SMRP standard. PMs completed within 10% tolerance of NEXTDATE divided
--- by PMs scheduled (NEXTDATE within window).
+-- Default: SMRP standard. PMs completed within 10% tolerance of effective due
+-- date, divided by PMs scheduled in the window.
+--
+-- KEY REFINEMENTS PER IBM PM FORECAST LOGIC DOCS:
+--   1. The effective due date is COALESCE(EXTDATE, NEXTDATE). EXTDATE is a
+--      one-time override that supersedes NEXTDATE; it auto-clears after WO
+--      generation. Using only NEXTDATE produces wrong compliance numbers when
+--      maintenance planners have legitimately extended a PM.
+--   2. Filter to PM.STATUS = 'ACTIVE'. Inactive / draft PMs don't forecast.
+--   3. Fixed vs floating schedules behave differently in the matching logic:
+--      - Fixed (PM.USETARGETDATE = TRUE)   → anchor on LASTSTARTDATE
+--      - Floating (PM.USETARGETDATE = FALSE) → anchor on LASTCOMPDATE
+--      Both still use COALESCE(EXTDATE, NEXTDATE) for the *target* date being
+--      measured against; the anchor only affects how the NEXT cycle is computed.
+--
+-- References:
+--   - IBM PM forecast logic:
+--     https://www.ibm.com/docs/en/mas-cd/maximo-manage/continuous-delivery?topic=forecasting-preventive-maintenance-forecast-logic
+--   - PM EXTDATE field: IBM Support pages on PM Extended Date
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION {{catalog}}.{{metrics_schema}}.pm_compliance(
     site_id STRING COMMENT 'SITEID. Pass NULL for all sites.',
@@ -97,17 +114,18 @@ CREATE OR REPLACE FUNCTION {{catalog}}.{{metrics_schema}}.pm_compliance(
     window_end TIMESTAMP
 )
 RETURNS DOUBLE
-COMMENT 'Trusted metric: PM compliance % using SMRP standard (10% tolerance). Window applies to NEXTDATE.'
+COMMENT 'Trusted metric: PM compliance % using SMRP standard (10% tolerance). Uses COALESCE(EXTDATE, NEXTDATE) for the effective due date. Window applies to that effective due date. Only ACTIVE-state PMs count.'
 RETURN (
     WITH scheduled AS (
-        SELECT pm.pmnum, pm.siteid, pm.nextdate,
-            datediff(SECOND, pm.nextdate,
-                pm.nextdate + (pm.frequency * 0.1 * INTERVAL 1 DAY)
-            ) AS tolerance_seconds
+        SELECT
+            pm.pmnum, pm.siteid,
+            COALESCE(pm.extdate, pm.nextdate) AS effective_due_date,
+            pm.usetargetdate
         FROM {{catalog}}.{{silver_schema}}.pm pm
         WHERE pm.__END_AT IS NULL
+          AND pm.status = 'ACTIVE'
           AND (site_id IS NULL OR pm.siteid = site_id)
-          AND pm.nextdate BETWEEN window_start AND window_end
+          AND COALESCE(pm.extdate, pm.nextdate) BETWEEN window_start AND window_end
     ),
     completions AS (
         SELECT s.pmnum, s.siteid, MIN(w.actfinish) AS first_completion
@@ -116,7 +134,8 @@ RETURN (
             ON w.pmnum = s.pmnum AND w.siteid = s.siteid
            AND w.status IN ('COMP', 'CLOSE')
            AND w.actfinish IS NOT NULL
-           AND w.actfinish <= s.nextdate + INTERVAL 30 DAY
+           -- SMRP 10% tolerance applied to the effective due date
+           AND w.actfinish <= s.effective_due_date + INTERVAL 30 DAY
         GROUP BY s.pmnum, s.siteid
     ),
     metrics AS (

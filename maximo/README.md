@@ -10,11 +10,12 @@ Neither persona is a Maximo specialist.
 
 | Persona | What they do | Skills they use most |
 |---|---|---|
-| **Maintenance planner / analyst** | Operational queries — backlog, scheduling, completion, labor hours | `overview`, `setup`, `data-quality`, `work-orders` |
+| **Maintenance planner / analyst** | Operational queries — backlog, scheduling, completion, labor hours, approvals | `overview`, `setup`, `data-quality`, `work-orders`, `workflow-and-approvals` |
 | **Reliability engineer** | Reliability metrics, failure-mode analysis | `overview`, `setup`, `data-quality`, `work-orders`, `reliability` |
 | **Integrity engineer** | Pressure-vessel inspections, corrosion trending, RBI, regulatory compliance | `overview`, `setup`, `data-quality`, `integrity`, `reliability` |
-| **HSE manager** | Permits, incidents, investigations, regulatory reporting | `overview`, `setup`, `data-quality`, `hse` |
+| **HSE manager** | Permits, incidents, investigations, regulatory reporting, MoC approvals | `overview`, `setup`, `data-quality`, `hse`, `workflow-and-approvals` |
 | **D&A / platform engineer** | Building pipelines, Genie Spaces, dashboards, ML on Maximo | `overview`, `setup`, `data-engineering`, plus whichever module |
+| **Procurement / sourcing analyst** | PO / PR / invoice approvals, vendor spend, three-way matching | `overview`, `setup`, `workflow-and-approvals` + `procurement` (planned) |
 | **Data scientist** | PdM models on Maximo + sensor data | `overview`, `setup`, `reliability`, plus `maximo-pdm` (v3) |
 
 ## Architecture: foundation + module
@@ -27,6 +28,7 @@ Neither persona is a Maximo specialist.
 | [`maximo-setup`](./maximo-setup/) | Bootstrap a customer's workspace glossary + register UC table/column comments |
 | [`maximo-data-quality`](./maximo-data-quality/) | Diagnose Maximo data quality issues |
 | [`maximo-data-engineering`](./maximo-data-engineering/) | Model Maximo Bronze → Silver/Gold (Lakeflow SDP) |
+| [`maximo-workflow-and-approvals`](./maximo-workflow-and-approvals/) | Query the workflow engine (WFINSTANCE, WFASSIGNMENT) — applies to every business object that goes through approval (WO, PR, PO, invoice, MOC, incident, ticket) |
 
 ### Module tier (loaded based on the domain in the question)
 
@@ -39,7 +41,9 @@ Neither persona is a Maximo specialist.
 
 ### v3 candidates (after v2 proves out)
 
-- `maximo-inventory` — INVENTORY / PO / INVOICE / COMPANIES analytics
+- `maximo-service-desk` — TICKET / SR / INCIDENT / PROBLEM views, TKSTATUS history (mirrors the WOSTATUS pattern). New module skill.
+- `maximo-procurement` — PR → PO → Receipt → INVOICE three-way matching, POTYPE/REVISIONNUM/HISTORYFLAG, CONTRACTTYPE branching (Purchase/Price/Blanket), COMPANIES disqualification. New module skill.
+- `maximo-inventory` — storeroom, item master, INVBALANCES, INVUSE
 - `maximo-pdm` — PdM ML patterns joining Maximo asset hierarchy + WO history with sensor / historian data
 - `maximo-work-orders-genie-space` — focused workflow for setting up a Genie Space over WO data
 - `maximo-work-orders-dashboard` — focused workflow for building an AI/BI dashboard over WO data

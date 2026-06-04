@@ -4,6 +4,20 @@ For the universal Maximo schema, see `maximo-overview/SKILL.md`. This skill focu
 
 ## PLUSG (O&G industry solution) tables
 
+The full inventory of PLUSG tables referenced by HSE workflows (per the IBM MAS Performance Wiki's recommended-index documentation):
+
+| Table | What it holds |
+|---|---|
+| `plusgpermitwork` | Permit-to-Work transactional records |
+| `plusgpertype` | **Permit & Certificate Type catalog** — distinct from transactional permits |
+| `plusgshiftlog` | Operator shift log header |
+| `plusgshftlogentry` | Operator shift log entries (line items) |
+| `plusgoperaction` | Operator-recorded actions |
+| `plusgrelatedrec` | Cross-record relationship links |
+| `plusgincperson` | Persons involved in incidents (**PII-sensitive**) |
+
+> IBM recommends archiving `plusgshiftlog` / `plusgshftlogentry` / Operator Log records periodically for performance — they grow quickly in active O&G operations.
+
 ### `plusgpermitwork` — Permit to Work records
 
 | Column | Notes |
@@ -19,9 +33,45 @@ For the universal Maximo schema, see `maximo-overview/SKILL.md`. This skill focu
 | `LOCATION` | Where the permitted work happens |
 | `ISSUEDBY` / `ISSUEDDATE` | Authorization audit trail |
 
-### `plusgpertype` — Permit types
+### `plusgpertype` — Permit & Certificate Type catalog
 
-Permit-type catalog: Hot Work, Cold Work, Confined Space, Excavation, Work-at-Heights, etc. Each type has different requirements and approval workflows.
+The **type catalog** — distinct from transactional `plusgpermitwork` records. Used by:
+- Permit to Work (PTW)
+- Isolation Management
+- Certifications
+
+Examples of type records: Hot Work, Cold Work, Confined Space, Excavation, Work-at-Heights, electrical-isolation certificate.
+
+**Three-state framework** governs reuse of a type:
+
+| State | Editable? | Applicable to new records? |
+|---|---|---|
+| `DRAFT` | Yes | No |
+| `ACTIVE` | No (read-only) | Yes |
+| `INACTIVE` | No (read-only) | No |
+
+When a type is applied to a transactional record (PTW / Isolation / Cert), the type's `LONGDESCRIPTION` populates the record's header.
+
+**Implication for analytics**: when asking "which permit types are in use", filter `plusgpertype` to `STATUS = 'ACTIVE'`. Inactive types may still appear on historical transactional records — that's intentional.
+
+Reference: [IBM — Permit and Certificate Types application](https://www.ibm.com/docs/en/mfo-and-g/7.6.2?topic=module-permit-certificate-types-application)
+
+### `plusgshiftlog` / `plusgshftlogentry` — Operator Log + shift log entries
+
+The **Operator Log** application captures shift-by-shift operational notes — production losses, handover items, equipment status changes, observations that don't rise to the level of a formal incident. Often the first place a near-miss gets recorded before formal HSE intake.
+
+- `plusgshiftlog` — log header per shift (one row per operator-shift)
+- `plusgshftlogentry` — line items within a shift log (production-loss entries, handover notes, equipment notes, etc.)
+
+The **Log Book** feature aggregates individual operator logs for shift handover — useful for trend analytics across shifts.
+
+For analytics:
+- Joining shift logs to incidents (via `plusgrelatedrec`) can surface "this incident was foreshadowed in three prior shift logs"
+- Production-loss entries are a leading indicator for equipment-driven outages
+
+### `plusgoperaction` — Operator-recorded actions
+
+Field-recorded actions tied to work, permits, or incidents. Used when an operator needs to log a step taken outside of a formal WO.
 
 ### `plusgshftlogentry` / `plusgshiftlog` — Operator shift logs
 

@@ -1,5 +1,36 @@
 # Maximo HSE — Gotchas
 
+## 0. LOTO Plans don't have a STATUS field — filter by `ACTIVE` boolean instead
+
+The single most surprising HSE gotcha. Most Maximo records have a `STATUS` field with history; **Lock Out / Tag Out plans do not**. From the IBM Maximo for O&G docs (verbatim):
+
+> "Lock Out/Tag Out Plan does not status. The Active field is used to identify plan records which are available for use."
+
+```sql
+-- WRONG (LOTO has no STATUS column at all)
+WHERE l.status = 'ACTIVE'
+
+-- RIGHT
+WHERE l.active = 1
+```
+
+There's also no LOTO status-history table. If you need to audit "when did this LOTO plan become active", you have to fall back to the audit-log infrastructure (`A_LOTO` or similar customer-specific audit tables), not a domain-modeled history.
+
+Reference: IBM Maximo for O&G — LOTO Plan documentation.
+
+## 0a. Permit/Certificate Type catalog vs transactional permits
+
+These are two distinct tables that customers often conflate:
+
+| `plusgpertype` (type catalog) | `plusgpermitwork` (transactional) |
+|---|---|
+| Reusable type definition (Hot Work, Confined Space, etc.) | One row per actual permit issued |
+| Three-state framework: `DRAFT` / `ACTIVE` / `INACTIVE` | Status flow: `DRAFT` / `APPROVED` / `ISSUED` / `ACTIVE` / `CLOSED` / `CANCELLED` |
+| Used to validate "which types do we offer" | Used to track actual operational permits |
+| Long descriptions populate the header on transactional records | Joins to WORKORDER, INCIDENT, MOC, etc. |
+
+When the user asks "show me active permits", they almost always mean transactional permits (`plusgpermitwork.STATUS IN ('ISSUED','ACTIVE')`), not the type catalog. Confirm if ambiguous.
+
 ## 1. `plusg*` tables may not exist
 
 The PLUSG prefix is the Maximo Oil & Gas industry-solution extension. Customers running classic Maximo without the O&G solution **don't have these tables**. Verify before writing queries that join to them — return a clear error rather than silently returning empty results.

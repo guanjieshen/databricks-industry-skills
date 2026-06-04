@@ -47,11 +47,29 @@ Preventive maintenance master.
 | `SITEID` | STRING | Composite with PMNUM |
 | `ASSETNUM` | STRING | Target asset |
 | `JPNUM` | STRING | Template (FK to JOBPLAN) |
+| `STATUS` | STRING | Only `ACTIVE` PMs generate WOs. Other states (DRAFT, INACTIVE) sit in the table |
 | `FREQUENCY` | INT | Interval value |
-| `FREQUNIT` | STRING | `DAYS`, `HOURS`, `MILES`, `READINGS` |
-| `NEXTDATE` | TIMESTAMP | Next due date |
-| `LASTSTARTDATE` | TIMESTAMP | Last generation date |
+| `FREQUNIT` | STRING | `DAYS`, `HOURS`, `MILES`, `READINGS`. Note: physical column is `FREQUNIT` (not `FREQUENCYUNITS`) |
+| `NEXTDATE` | TIMESTAMP | Calculated next due date |
+| `EXTDATE` | TIMESTAMP | **One-time override** that supersedes `NEXTDATE`. Auto-clears after WO generation. Use `COALESCE(EXTDATE, NEXTDATE)` for the effective due date |
+| `USETARGETDATE` | BOOLEAN | `TRUE` = fixed schedule (anchor on `LASTSTARTDATE`), `FALSE` = floating (anchor on `LASTCOMPDATE`) |
+| `LASTSTARTDATE` | TIMESTAMP | Last generation start (anchor for fixed schedules) |
+| `LASTCOMPDATE` | TIMESTAMP | Last completion (anchor for floating schedules) |
 | `ALERTLEAD` | INT | Days before NEXTDATE to alert / generate WO |
+| `PARENT` | STRING | Parent PM if this PM is in a hierarchy. Prefer `PMANCESTOR` over naive PARENT self-join for hierarchy traversal |
+
+### `PMANCESTOR` — PM hierarchy closure table (IBM-canonical)
+
+The PMANCESTOR table is a **closure table** for the PM hierarchy: one row per (ancestor, descendant) pair across all depths. Required for correct hierarchical roll-ups when WOs are generated against descendant PMs.
+
+| Column | Notes |
+|---|---|
+| `PMNUM` | The descendant PM |
+| `SITEID` | Composite with PMNUM |
+| `ANCESTOR` | An ancestor PMNUM at any depth |
+| `ANCESTOR_SITEID` | Composite with ANCESTOR |
+
+A naive `PM.PARENT` self-join misses indirect ancestors. Always use `PMANCESTOR` for hierarchy queries.
 
 ### `PMSEQUENCE`
 
@@ -61,7 +79,17 @@ PM step sequences (rare for analytics — most queries hit `PM` directly).
 
 Condition-monitoring meters per asset.
 
-`ASSETMETER` defines: meter name, type (continuous / gauge / characteristic), warn/action thresholds.
+`ASSETMETER` defines the meter contract:
+
+| Column | Notes |
+|---|---|
+| `ASSETNUM` + `SITEID` + `METERNAME` | Composite key |
+| `METERTYPE` | `CONTINUOUS`, `GAUGE`, `CHARACTERISTIC` |
+| `WARNLIMITLO` / `WARNLIMITHI` | Warning thresholds |
+| `ACTIONLIMITLO` / `ACTIONLIMITHI` | Action thresholds (typically trigger inspection / repair WO) |
+| `LASTREADING` | Most recent reading value |
+| `LASTREADINGDATE` | When most recent reading was taken |
+| `AVERAGE` | **Maximo-computed rolling average meter-units per day**. Required for meter-based PM forecasting: `next_due ≈ LASTREADINGDATE + (FREQUENCY - LASTREADING) / AVERAGE`. Can be NULL / zero for new meters |
 
 `METERREADING` is the time-series: append-only readings against meters.
 
@@ -75,5 +103,7 @@ For meter-driven failure prediction or threshold-exceedance analysis, join `METE
 | `FAILUREREPORT` → `FAILURECODE` | N : 1 |
 | `FAILURECODE` → `FAILURECODE` (tree) | self via `PARENT` |
 | `ASSET` → `PM` | 1 : N |
+| `PM` → `PM` (parent/child) | self-join via `PARENT` OR closure via `PMANCESTOR` |
+| `PMANCESTOR` (ancestor) → `PM` | 1 : N (transitive closure) |
 | `ASSET` → `ASSETMETER` | 1 : N |
 | `ASSETMETER` → `METERREADING` | 1 : N |
