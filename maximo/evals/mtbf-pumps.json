@@ -1,0 +1,10 @@
+{
+  "query": "what's the MTBF for our centrifugal pumps this year?",
+  "expected_skill": "maximo-reliability",
+  "expected_behavior": [
+    "Loads maximo-reliability",
+    "Calls the Trusted Asset MTBF UC function rather than writing ad-hoc SQL",
+    "Resolves 'centrifugal pump' to the CLASSSTRUCTUREID set via the glossary",
+    "Matches IBM's published O&G MTBF definition"
+  ]
+}

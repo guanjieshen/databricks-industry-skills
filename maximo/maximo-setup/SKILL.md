@@ -7,15 +7,17 @@ description: |
   Triggers on: "set up Maximo for Genie", "set up our Maximo glossary",
   "configure Genie for our Maximo data", "Genie doesn't know our business
   terms", "register Maximo schema comments".
-tags:
-  - data-source:ibm-maximo
-  - tier:foundation
-  - persona:da-platform
+compatibility: Requires databricks CLI >= v0.294.0 (experimental aitools)
+metadata:
+  version: "0.1.0"
+parent: maximo-overview
 ---
 
 # Maximo Setup
 
 Bootstrap a Databricks workspace so Genie Code can answer Maximo questions using the customer's own business jargon. This is a **one-time setup** per workspace, run by the D&A team. After it completes, every other Maximo skill works more effectively.
+
+> **FIRST:** load the `maximo-overview` skill — it carries the baseline Maximo data model, the module map, and the universal gotchas (SITEID composite keys, `WOCLASS` filtering, `ISTASK` dedup, WOSTATUS-vs-WORKORDER history). This skill builds on that foundation.
 
 Two outputs:
 

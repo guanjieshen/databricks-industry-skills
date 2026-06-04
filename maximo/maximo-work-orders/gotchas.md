@@ -1,5 +1,18 @@
 # Maximo Work Management — Gotchas
 
+## Contents
+
+- 1. Status history is in `WOSTATUS`, not `WORKORDER`
+- 2. `WORKORDER` is a multi-purpose table — filter by `WOCLASS`
+- 3. `ISTASK = 1` rows are child tasks — deduplicate to parent
+- 4. REST-API ingestion may have incomplete status history
+- 5. Open-status set is customer-configurable
+- 6. Always include `SITEID` in joins
+- 7. Dates: which one means what
+- 8. `WPLABOR` / `WPMATERIAL` are PLANNED — not actual
+- 9. Failure-code aggregation is hierarchical
+- 10. `WORKORDER.WORKTYPE` is customer-configured
+
 The traps that will silently produce wrong numbers. Read before writing any query.
 
 ## 1. Status history is in `WOSTATUS`, not `WORKORDER`

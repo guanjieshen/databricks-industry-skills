@@ -8,14 +8,9 @@ description: |
   work", "PTW", "incident", "near miss", "investigation", "TRIR", "LTIR",
   "MoC", "Management of Change", "safety observation", "OSHA recordable",
   "PSM", "process safety".
-tags:
-  - data-source:ibm-maximo
-  - tier:module
-  - module:hse
-  - industry:oil-and-gas
-  - persona:hse-manager
-  - persona:da-platform
-  - persona:integrity-engineer
+metadata:
+  version: "0.1.0"
+parent: maximo-overview
 ---
 
 # Maximo HSE
@@ -23,6 +18,8 @@ tags:
 Help HSE managers, safety officers, and regulatory reporting teams query, analyze, or build pipelines on Maximo's HSE-related data. Heavily relies on the PLUSG industry-solution extension (O&G).
 
 This skill is **O&G-heavy**. If the customer is not on the Maximo Oil & Gas industry solution, the `plusg*` tables won't exist and most of this skill won't apply.
+
+> **FIRST:** load the `maximo-overview` skill — it carries the baseline Maximo data model, the module map, and the universal gotchas (SITEID composite keys, `WOCLASS` filtering, `ISTASK` dedup, WOSTATUS-vs-WORKORDER history). This skill builds on that foundation.
 
 ## When to use
 
@@ -57,7 +54,7 @@ For integrity-specific incident analysis (did a missed inspection cause this inc
 - [gotchas.md](gotchas.md) — sparse plusg* data, TRIR hours-worked source, near-miss vs incident vs recordable
 - [examples.sql](examples.sql) — parameterized HSE queries
 - [views.sql](views.sql) — DDL for `v_open_permits`, `v_incidents_enriched`, `v_moc_actions`
-- [metric_udfs.sql](metric_udfs.sql) — `trir`, `ltir`, `open_permit_count`, `permit_compliance`
+- [metric_udfs.sql](metric_udfs.sql) — **Trusted Asset functions**: UC SQL functions you register once so Genie Spaces call them as *certified, governed metrics* instead of regenerating ad-hoc SQL. Register via `maximo-setup` or by running the file, then reference the functions by name.
 
 ## What NOT to do
 

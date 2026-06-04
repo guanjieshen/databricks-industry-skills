@@ -38,6 +38,9 @@ Neither persona is a Maximo specialist.
 | [`maximo-reliability`](./maximo-reliability/) | MTBF / MTTR / PM compliance / failure-mode analysis |
 | [`maximo-integrity`](./maximo-integrity/) | Corrosion trending, regulatory inspections, RBI, inspection-tied incidents (O&G-heavy) |
 | [`maximo-hse`](./maximo-hse/) | Permits, incidents, investigations, MOC (O&G-heavy) |
+| [`maximo-genie-space`](./maximo-genie-space/) | Scaffold/curate a Genie Space over Maximo data — assembles instructions, certified example SQL, synonyms, and Trusted Asset functions, then benchmarks accuracy |
+
+Discovery + quality test cases live in [`evals/`](./evals/) (`query → expected_behavior`).
 
 ### v3 candidates (after v2 proves out)
 
@@ -45,7 +48,6 @@ Neither persona is a Maximo specialist.
 - `maximo-procurement` — PR → PO → Receipt → INVOICE three-way matching, POTYPE/REVISIONNUM/HISTORYFLAG, CONTRACTTYPE branching (Purchase/Price/Blanket), COMPANIES disqualification. New module skill.
 - `maximo-inventory` — storeroom, item master, INVBALANCES, INVUSE
 - `maximo-pdm` — PdM ML patterns joining Maximo asset hierarchy + WO history with sensor / historian data
-- `maximo-work-orders-genie-space` — focused workflow for setting up a Genie Space over WO data
 - `maximo-work-orders-dashboard` — focused workflow for building an AI/BI dashboard over WO data
 
 ## Install order (recommended)

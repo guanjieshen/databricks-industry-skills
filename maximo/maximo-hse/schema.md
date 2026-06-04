@@ -1,5 +1,27 @@
 # Maximo HSE — Schema Reference
 
+## Contents
+
+- PLUSG (O&G industry solution) tables
+  - `plusgpermitwork` — Permit to Work records
+  - `plusgpertype` — Permit & Certificate Type catalog
+  - `plusgshiftlog` / `plusgshftlogentry` — Operator Log + shift log entries
+  - `plusgoperaction` — Operator-recorded actions
+  - `plusgshftlogentry` / `plusgshiftlog` — Operator shift logs
+  - `plusgrelatedrec` — Cross-record links
+  - `plusgincperson` — Persons involved in incidents
+  - `plusgoperaction` — Operator-recorded actions
+- Core Maximo tables used by HSE
+  - `INCIDENT`
+  - `INVESTIGATION`
+  - `MOC` (Management of Change)
+  - `ACTION` (sometimes `WORKORDER` with `WOCLASS = 'ACTION'`)
+- Common joins
+  - Open permits with their covered work
+  - Incidents linked to specific WOs / assets
+  - Corrective actions still open from incidents
+- Cardinality summary
+
 For the universal Maximo schema, see `maximo-overview/SKILL.md`. This skill focuses on the PLUSG O&G industry-solution tables and HSE workflows.
 
 ## PLUSG (O&G industry solution) tables

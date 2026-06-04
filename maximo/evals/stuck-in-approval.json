@@ -1,0 +1,10 @@
+{
+  "query": "which purchase orders are stuck in approval and who owns them?",
+  "expected_skill": "maximo-workflow-and-approvals",
+  "expected_behavior": [
+    "Loads maximo-workflow-and-approvals",
+    "Uses WFINSTANCE/WFASSIGNMENT for current approval ownership",
+    "Identifies the current assignee, not a historical one",
+    "Scopes to PO records and reports time-in-approval"
+  ]
+}

@@ -8,17 +8,8 @@ description: |
   query (SITEID composite keys, WOCLASS filtering, ISTASK deduplication,
   WOSTATUS vs WORKORDER history split). This is the foundation skill loaded
   for any Maximo question — other Maximo skills layer on top.
-tags:
-  - data-source:ibm-maximo
-  - tier:foundation
-  - industry:oil-and-gas
-  - industry:utilities
-  - industry:mining
-  - persona:analyst
-  - persona:da-platform
-  - persona:reliability-engineer
-  - persona:integrity-engineer
-  - persona:hse-manager
+metadata:
+  version: "0.1.0"
 ---
 
 # Maximo Overview
@@ -26,6 +17,13 @@ tags:
 This skill gives you the baseline literacy needed to work with IBM Maximo data in Databricks. Load it whenever a user mentions Maximo, MAS, or any Maximo concept.
 
 You are not a Maximo specialist out of the box. With this skill loaded, you behave like one — you know the module map, the canonical tables, the joins that always go wrong, and how the Oil & Gas industry extensions layer in.
+
+## Genie Code tips (apply to every Maximo question)
+
+- **Run the CLI with `--profile <profile>`** — each Bash command in Genie Code runs in a *separate* shell, so a bare `export DATABRICKS_CONFIG_PROFILE=...` on its own line does **not** persist. Pass `--profile` on every command, or chain with `&&`.
+- **Reference tables explicitly** with `@catalog.schema.table` and use **`/findTables`** to locate them — don't guess names.
+- Skills load **only in Agent mode**, and Genie selects them **only by matching their `description`**. If you edit a skill, start a **new chat** for the change to take effect.
+- If `maximo-setup` has not been run in this workspace, business terms and Unity Catalog comments may be missing and answers degrade. Offer to run it.
 
 ## When to use
 

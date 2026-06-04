@@ -15,16 +15,24 @@ The same shape applies to every supported data source: load the family once, and
 ```
 databricks-industry-skills/
 ├── README.md            ← this file
+├── _authoring/          ← the repo standard, as a skill — load before building/reviewing skills
+│   └── authoring-industry-skills/
 ├── _common/             ← cross-cutting skills used regardless of data source
 │   └── data-exploration/
 ├── _template/           ← canonical skill skeleton (fork to start a new data-source family)
 └── <data-source>/       ← one folder per supported data source
     ├── README.md        ← family overview, persona map, install order
-    ├── <skill-1>/
+    ├── <source>-overview/   ← foundation root (every other skill sets parent: <source>-overview)
+    ├── <skill>/
     │   ├── SKILL.md
     │   └── ... supporting files
-    └── ...
+    └── evals/           ← query → expected_behavior cases (discovery + quality)
 ```
+
+> **Contributing?** Load the [`authoring-industry-skills`](./_authoring/authoring-industry-skills/SKILL.md)
+> skill first — it defines the frontmatter standard, how to write descriptions
+> Genie will match, tiers, progressive disclosure, Trusted Assets, and the
+> review checklist that every skill in this repo follows.
 
 Cross-cutting skills (universal, not tied to one data source):
 
@@ -85,42 +93,48 @@ databricks workspace import-dir \
 
 After install, open a **new** Genie Code chat — skills are picked up automatically when their description matches your prompt.
 
-## Skill structure (per the Agent Skills standard)
+## Skill structure
 
-Every skill is a folder containing at minimum a `SKILL.md` with YAML frontmatter and a body:
+Genie Code loads a skill **only by matching its `description`** — in **Agent mode**
+only. After you edit a skill, start a **new chat** for the change to take effect.
+
+Every skill is a folder with a `SKILL.md`. Required frontmatter is just `name` +
+`description`; this repo also uses `metadata.version`, `parent` (composition), and
+`compatibility` (when the skill runs a CLI). **Do not use `tags:`/`owners:`** —
+Genie ignores them; put persona/industry signal into the `description` instead.
 
 ```yaml
 ---
-name: <data-source>-<topic>
+name: <data-source>-<topic>        # ≤64 chars, lowercase/hyphens, source-prefixed (globally unique)
 description: |
-  Concise, specific description. Genie matches on this — include trigger
-  phrases (both technical jargon and business terms).
-tags:
-  - data-source:ibm-maximo
-  - tier:foundation             # or tier:module
-  - industry:oil-and-gas        # repeatable
-  - persona:analyst             # repeatable
+  Third person, ≤1024 chars. Lead with the data-source name + synonyms, then
+  technical identifiers (table/column names) AND business phrasings. State both
+  what it does and when to use it. (This text is the ONLY thing Genie matches on.)
+metadata:
+  version: "0.1.0"
+parent: <data-source>-overview     # omit only in the overview itself
+# compatibility: Requires databricks CLI >= v0.294.0 (experimental aitools)  # only if it runs the CLI
 ---
 
 # Skill body (markdown)
 ```
 
-Best practices (from [agentskills.io](https://agentskills.io/home)):
+Best practices (full rationale in the [`authoring-industry-skills`](./_authoring/authoring-industry-skills/SKILL.md) skill):
 
-- **Focused** — one task or workflow per skill
-- **Clear names + descriptions** — the description is what Genie matches on
-- **Example-driven** — concrete patterns Genie can reuse
-- **Minimal context** — only what's needed for the task
-- **Guidance vs automation separated** — markdown for intent, scripts for repeatable actions
-- **Iterate** — treat skills as living workflows
+- **Focused** — one coherent unit of work per skill
+- **Discoverable** — the description carries source name + synonyms + table names + business phrasings
+- **Layered** — modules set `parent: <source>-overview`; body opens with a `> **FIRST:** load <source>-overview` line
+- **Progressive disclosure** — body < 500 lines; heavy content in sibling files with "load when…" triggers; ref files > 100 lines get a `## Contents` ToC
+- **Genie-native** — register UC comments (`-setup`) and ship metrics as Trusted Asset UC functions
+- **Tested** — add evals under `<source>/evals/`; verify discovery in a new Agent-mode chat
 
 ## Authoring a new family
 
-1. Copy `_template/` to `<your-data-source>/`.
-2. Read `_template/README.md` and `_template/<skill-name>/SKILL.md` for the canonical shape.
-3. Build the foundation tier first (overview + setup + data-engineering + data-quality), then add module skills.
-4. Each skill should pass the "would Genie behave better with this loaded than without?" test before shipping.
+1. **Load the [`authoring-industry-skills`](./_authoring/authoring-industry-skills/SKILL.md) skill** — it's the standard.
+2. Copy `_template/` to `<your-data-source>/` and read `_template/README.md`.
+3. Build the foundation tier first (overview + setup + data-engineering + data-quality), then modules, then a `<source>-genie-space` scaffolder.
+4. Review against [`_authoring/authoring-industry-skills/checklist.md`](./_authoring/authoring-industry-skills/checklist.md) before shipping.
 
 ## License
 
-TBD.
+TBD — set a license before sharing the repo publicly.

@@ -8,10 +8,9 @@ description: |
   expectations. Triggers on: "build a pipeline for Maximo Silver", "model
   Maximo Bronze", "what's the right SDP pattern for WORKORDER", "Maximo
   CDC", "Maximo Silver / Gold layer".
-tags:
-  - data-source:ibm-maximo
-  - tier:foundation
-  - persona:da-platform
+metadata:
+  version: "0.1.0"
+parent: maximo-overview
 ---
 
 # Maximo Data Engineering
@@ -19,6 +18,8 @@ tags:
 Design the Silver/Gold layer for Maximo data using Lakeflow Spark Declarative Pipelines. This is the platform foundation every downstream Maximo skill stands on.
 
 Assumes Maximo data is already landed in Bronze (partner connector, custom Spark JDBC, MAS Kafka — ingestion is out of scope for this skill family). Bridges from whatever Bronze shape exists to a clean Silver/Gold layer.
+
+> **FIRST:** load the `maximo-overview` skill — it carries the baseline Maximo data model, the module map, and the universal gotchas (SITEID composite keys, `WOCLASS` filtering, `ISTASK` dedup, WOSTATUS-vs-WORKORDER history). This skill builds on that foundation.
 
 ## When to use
 

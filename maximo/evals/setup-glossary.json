@@ -1,0 +1,10 @@
+{
+  "query": "genie doesn't understand our term 'Mainline' for our Maximo data",
+  "expected_skill": "maximo-setup",
+  "expected_behavior": [
+    "Loads maximo-setup",
+    "Runs the glossary interview in small batches (not all at once)",
+    "Maps 'Mainline' to the appropriate SITEID/LOCATIONS hierarchy",
+    "Offers to register UC comments and generate the workspace glossary skill"
+  ]
+}

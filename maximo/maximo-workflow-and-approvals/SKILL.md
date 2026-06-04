@@ -10,13 +10,9 @@ description: |
   "approval bottleneck", "where is this PO in the workflow", "open approvals",
   "my inbox", "pending tasks". This is a foundation-tier skill that composes
   with every other Maximo module skill — any record can be in a workflow.
-tags:
-  - data-source:ibm-maximo
-  - tier:foundation
-  - persona:analyst
-  - persona:da-platform
-  - persona:procurement-manager
-  - persona:hse-manager
+metadata:
+  version: "0.1.0"
+parent: maximo-overview
 ---
 
 # Maximo Workflow & Approvals
@@ -24,6 +20,8 @@ tags:
 Help users query and analyze Maximo's workflow engine — the system that drives approvals, assignments, and routing for every business object in Maximo (work orders, POs, invoices, MoCs, tickets, incidents, etc.).
 
 This is a **foundation skill** — it composes with every module skill. When someone asks "where is this WO in approval?" or "show me stuck POs", the workflow tables are the answer, not the business-object table.
+
+> **FIRST:** load the `maximo-overview` skill — it carries the baseline Maximo data model, the module map, and the universal gotchas (SITEID composite keys, `WOCLASS` filtering, `ISTASK` dedup, WOSTATUS-vs-WORKORDER history). This skill builds on that foundation.
 
 ## When to use
 
@@ -70,7 +68,7 @@ For any new question, resolve in this order:
 - [gotchas.md](gotchas.md) — `ASSIGNSTATUS` lifecycle, `ACTIVE=1` vs leaves-workflow, person-group peer rules, e-signature, completed vs forwarded
 - [examples.sql](examples.sql) — parameterized queries: current owner, cycle time, stuck-in-approval, bottlenecks
 - [views.sql](views.sql) — `v_open_approvals`, `v_workflow_history`
-- [metric_udfs.sql](metric_udfs.sql) — Trusted UC SQL functions for approval-age and cycle-time metrics
+- [metric_udfs.sql](metric_udfs.sql) — **Trusted Asset functions**: UC SQL functions you register once so Genie Spaces call them as *certified, governed metrics* instead of regenerating ad-hoc SQL. Register via `maximo-setup` or by running the file, then reference the functions by name.
 
 ## What NOT to do
 

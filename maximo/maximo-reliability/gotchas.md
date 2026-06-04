@@ -1,5 +1,22 @@
 # Reliability — Gotchas
 
+## Contents
+
+- 1. MTBF and MTTR have specific Maximo O&G definitions
+- 2. PM compliance has at least three valid definitions
+- 2a. The effective due date is `COALESCE(EXTDATE, NEXTDATE)` — not just `NEXTDATE`
+- 2b. Fixed vs floating PMs anchor on different dates
+- 2c. Only `ACTIVE`-state PMs forecast
+- 2d. PM hierarchy traversal — use `PMANCESTOR`, not naive `PARENT` self-join
+- 2e. Meter-based PMs forecast using `ASSETMETER.AVERAGE`
+- 2f. The column is `FREQUNIT`, not `FREQUENCYUNITS`
+- 3. FAILURECODE hierarchy must be flattened before aggregation
+- 4. Failure event timestamp ≠ WO close timestamp
+- 5. PM Compliance and "skipped" PMs
+- 6. Meter-reading-driven analytics
+- 7. "Bad actor" definitions
+- 8. Asset class hierarchy uses CLASSSTRUCTUREID, not strings
+
 These are the definitional traps that cause reliability metrics to be wrong or to drift from what Maximo's own UI shows.
 
 ## 1. MTBF and MTTR have specific Maximo O&G definitions

@@ -4,6 +4,19 @@ All tables follow the IBM Maximo MBO model. Column lists below are the most comm
 
 Catalog/schema is customer-specific. The skill substitutes `{{maximo_catalog}}.{{maximo_schema}}` at query time.
 
+## Contents
+
+- `WORKORDER` — work-order header
+- `WOSTATUS` — work-order status history
+- `ASSET` — asset master
+- `LOCATIONS` — location master
+- `LABTRANS` — labor transactions
+- `WPLABOR` / `WPMATERIAL` — planned labor and material
+- `JOBPLAN` / `JPLABOR` / `JPMATERIAL` — job-plan templates
+- `FAILUREREPORT` + `FAILURECODE`
+- Other useful tables (referenced but not detailed here)
+- Cardinality summary
+
 ## `WORKORDER` — work-order header
 
 The header table. One row per WO, holds *current* state.

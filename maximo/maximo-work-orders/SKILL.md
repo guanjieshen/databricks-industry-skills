@@ -8,21 +8,16 @@ description: |
   "completed WOs", "preventive vs corrective maintenance", "WO aging", and any
   question about WO operations. Compose with maximo-overview for baseline data
   model literacy.
-tags:
-  - data-source:ibm-maximo
-  - tier:module
-  - module:work-management
-  - industry:oil-and-gas
-  - industry:utilities
-  - industry:mining
-  - persona:analyst
-  - persona:da-platform
-  - persona:reliability-engineer
+metadata:
+  version: "0.1.0"
+parent: maximo-overview
 ---
 
 # Maximo Work Orders
 
 Help the user query, analyze, or build pipelines on Maximo work-order data. Composes with `maximo-overview` (baseline data model + universal gotchas) — this skill adds the work-order-specific schema, gold-standard queries, and reusable views/UDFs.
+
+> **FIRST:** load the `maximo-overview` skill — it carries the baseline Maximo data model, the module map, and the universal gotchas (SITEID composite keys, `WOCLASS` filtering, `ISTASK` dedup, WOSTATUS-vs-WORKORDER history). This skill builds on that foundation.
 
 ## When to use
 
@@ -59,7 +54,7 @@ For any new question, resolve in this order:
 - [gotchas.md](gotchas.md) — error-prone joins (WOSTATUS history, WOCLASS, ISTASK dedup, SITEID composite, etc.)
 - [examples.sql](examples.sql) — parameterized gold-standard queries
 - [views.sql](views.sql) — DDL for `v_workorder_enriched`, `v_workorder_status_history`, `v_labor_actuals`
-- [metric_udfs.sql](metric_udfs.sql) — UC SQL functions for Trusted-asset registration
+- [metric_udfs.sql](metric_udfs.sql) — **Trusted Asset functions**: UC SQL functions you register once so Genie Spaces call them as *certified, governed metrics* instead of regenerating ad-hoc SQL. Register via `maximo-setup` or by running the file, then reference the functions by name.
 
 ## What NOT to do
 

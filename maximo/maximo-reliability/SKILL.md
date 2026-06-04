@@ -8,16 +8,9 @@ description: |
   Maximo UI. Triggers on: "MTBF", "MTTR", "PM compliance", "failure analysis",
   "bad actor", "reliability scorecard", "mean time between failures", "mean
   time to repair", "RCM", "SMRP metric".
-tags:
-  - data-source:ibm-maximo
-  - tier:module
-  - module:asset-reliability
-  - industry:oil-and-gas
-  - industry:utilities
-  - industry:mining
-  - persona:reliability-engineer
-  - persona:analyst
-  - persona:da-platform
+metadata:
+  version: "0.1.0"
+parent: maximo-overview
 ---
 
 # Maximo Reliability
@@ -25,6 +18,8 @@ tags:
 Help the user compute reliability metrics on Maximo data — MTBF, MTTR, PM compliance, failure-mode analysis. Composes with `maximo-overview` and `maximo-work-orders`.
 
 The defining quality of this skill: **registered Trusted UDFs whose output matches what's displayed in the Maximo UI**, so reliability engineers can reconcile dashboard numbers against Maximo screens.
+
+> **FIRST:** load the `maximo-overview` skill — it carries the baseline Maximo data model, the module map, and the universal gotchas (SITEID composite keys, `WOCLASS` filtering, `ISTASK` dedup, WOSTATUS-vs-WORKORDER history). This skill builds on that foundation.
 
 ## When to use
 
@@ -70,7 +65,7 @@ Citation in the UDF comments references IBM Support page: `https://www.ibm.com/s
 - [gotchas.md](gotchas.md) — MTBF/MTTR definitional traps, PM-compliance ambiguity, FAILURECODE hierarchy
 - [examples.sql](examples.sql) — parameterized reliability queries
 - [views.sql](views.sql) — DDL for `v_failure_events`, `v_pm_schedule`
-- [metric_udfs.sql](metric_udfs.sql) — UC SQL functions: `mtbf`, `mttr`, `pm_compliance`, `time_since_last_failure`, `time_since_last_pm`
+- [metric_udfs.sql](metric_udfs.sql) — **Trusted Asset functions**: UC SQL functions you register once so Genie Spaces call them as *certified, governed metrics* instead of regenerating ad-hoc SQL. Register via `maximo-setup` or by running the file, then reference the functions by name.
 
 ## What NOT to do
 

@@ -1,0 +1,10 @@
+{
+  "query": "what's our open work order backlog by site?",
+  "expected_skill": "maximo-work-orders",
+  "expected_behavior": [
+    "Loads maximo-work-orders with maximo-overview as parent",
+    "Filters WOCLASS='WORKORDER' and ISTASK=0 to exclude tasks/PMs",
+    "Uses the customer's open-status set from the workspace glossary",
+    "Joins on SITEID and groups by site"
+  ]
+}

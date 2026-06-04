@@ -1,5 +1,10 @@
 # `_template/` — How to build a new data-source family
 
+> **Load the `authoring-industry-skills` skill first** ([`_authoring/`](../_authoring/authoring-industry-skills/SKILL.md)).
+> It is the repo standard — frontmatter, description-writing, tiers, progressive
+> disclosure, Trusted Assets, and the new-skill checklist. This README is the
+> quick mold; that skill is the full rationale.
+
 Fork this folder to start a skill family for a new data source (e.g. `sap-pm/`, `oracle-eam/`).
 
 ```bash
@@ -65,7 +70,7 @@ Every skill is a folder containing at minimum a `SKILL.md`. Supporting files are
 ├── gotchas.md        ← optional: error-prone joins, edge cases, common mistakes
 ├── examples.sql      ← optional: parameterized gold-standard queries
 ├── views.sql         ← optional: DDL for reusable Delta views
-├── metric_udfs.sql   ← optional: UC SQL functions (Trusted asset candidates)
+├── metric_udfs.sql   ← optional: Trusted Asset UC SQL functions (certified metrics Genie Spaces call)
 └── scripts/          ← optional: automation (Python/bash for repeatable actions)
     └── ...
 ```
@@ -77,14 +82,39 @@ Per the [Agent Skills standard](https://agentskills.io/home):
 
 ## SKILL.md template
 
-See [`example-skill/SKILL.md`](./example-skill/SKILL.md) for the canonical structure.
+See [`example-skill/SKILL.md`](./example-skill/SKILL.md) for the canonical structure and its sibling reference files.
+
+### Frontmatter standard
+
+Only `name` + `description` are required by the spec; this repo also uses
+`metadata.version`, `parent`, and `compatibility`. **Never use `tags:` or
+`owners:`** — Genie ignores them; put persona/industry signal into the
+`description` instead. Genie selects skills **only by matching the description**.
+
+```yaml
+---
+name: <source>-<topic>            # ≤64 chars, lowercase/numbers/hyphens, source-prefixed (globally unique)
+description: |
+  Third person, ≤1024 chars. Lead with the data-source name + synonyms, then
+  technical identifiers (table/column names) AND business phrasings. State what
+  it does and when to use it.
+metadata:
+  version: "0.1.0"
+parent: <source>-overview          # omit only in the overview itself; use databricks-core if building on core
+# compatibility: Requires databricks CLI >= v0.294.0 (experimental aitools)  # only if the skill runs the CLI
+---
+```
 
 ## Checklist before shipping a new family
 
 - [ ] `README.md` clearly states what the family covers and who benefits
-- [ ] All four foundation skills exist
+- [ ] All four foundation skills exist (+ a `<source>-genie-space` scaffolder where useful)
 - [ ] At least one module skill exists with a concrete user value prop
-- [ ] Every skill description is specific enough that Genie matches it correctly
-- [ ] Every skill passes the "would Genie behave better with this loaded?" test
-- [ ] Skills follow the focused / clear / example-driven / minimal-context standard
+- [ ] Frontmatter follows the standard above — no `tags:`/`owners:`, `parent:` set, `metadata.version` present
+- [ ] Every description leads with source name + synonyms and includes table names AND business phrasings
+- [ ] Root `-overview` description is broad; module descriptions are narrow & distinctive
+- [ ] Body < 500 lines; top gotchas inline; reference files > 100 lines have a `## Contents` ToC
+- [ ] Metrics ship as Trusted Asset UC functions; `-setup` registers UC comments
+- [ ] ≥3 evals under `<source>/evals/`; discovery verified in a new Agent-mode chat
 - [ ] Automation is in `scripts/`, guidance is in markdown
+- [ ] Reviewed against [`_authoring/authoring-industry-skills/checklist.md`](../_authoring/authoring-industry-skills/checklist.md)

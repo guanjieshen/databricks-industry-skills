@@ -1,5 +1,19 @@
 # Common Maximo Data Quality Issues — Root Cause Reference
 
+## Contents
+
+- Issue 1 — WOSTATUS sparse or out of sync with WORKORDER
+- Issue 2 — Duplicate (WONUM, SITEID)
+- Issue 3 — Task / parent hierarchy broken
+- Issue 4 — Inflated counts (WOCLASS not filtered)
+- Issue 5 — Orphaned LABTRANS / WPLABOR / WPMATERIAL
+- Issue 6 — Hierarchy orphans (ASSET / LOCATIONS pointing at missing parents)
+- Issue 7 — Cross-site duplicates (master-data drift)
+- Issue 8 — Date inconsistencies
+- Issue 9 — PM generation health (compliance dropped suddenly)
+- Issue 10 — Custom column unexpectedly NULL
+- Quick triage tree
+
 Each entry maps to a `diagnostics.sql` probe. After running the probe, use this guide to interpret findings and recommend remediation.
 
 ---

@@ -10,12 +10,10 @@ description: |
   "table statistics", "data validation". This is a universal data-discovery
   skill that applies to ANY data in Databricks — including but not limited
   to industry-specific sources like Maximo.
-tags:
-  - tier:common
-  - surface:notebook
-  - persona:analyst
-  - persona:da-platform
-owners: [databricks]
+compatibility: Requires databricks CLI >= v0.294.0 (experimental aitools)
+metadata:
+  version: "0.1.0"
+parent: databricks-core
 ---
 
 # Data Exploration

@@ -6,13 +6,9 @@ description: |
   records", "the same WO appears twice", "site totals don't reconcile",
   "PM compliance dropped suddenly". Provides a diagnostic playbook with
   ready-to-run SQL probes for the most common Maximo data quality problems.
-tags:
-  - data-source:ibm-maximo
-  - tier:foundation
-  - persona:analyst
-  - persona:da-platform
-  - persona:reliability-engineer
-  - persona:integrity-engineer
+metadata:
+  version: "0.1.0"
+parent: maximo-overview
 ---
 
 # Maximo Data Quality
@@ -20,6 +16,8 @@ tags:
 When something looks off in Maximo analytics, this skill helps Genie diagnose. Common shapes: numbers don't match what's on the Maximo UI; status history looks sparse; labor totals double-count; assets have orphaned records; site reconciliation breaks.
 
 **Why this skill matters**: the first time a user gets a wrong number, they distrust the entire library. This skill makes "investigate why this looks wrong" a competent, fast workflow.
+
+> **FIRST:** load the `maximo-overview` skill — it carries the baseline Maximo data model, the module map, and the universal gotchas (SITEID composite keys, `WOCLASS` filtering, `ISTASK` dedup, WOSTATUS-vs-WORKORDER history). This skill builds on that foundation.
 
 ## When to use
 

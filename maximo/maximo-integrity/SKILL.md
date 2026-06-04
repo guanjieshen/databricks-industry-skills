@@ -8,13 +8,9 @@ description: |
   inspection-tied incidents. Triggers on: "corrosion rate", "thickness reading",
   "regulatory inspection", "inspection due", "API 510", "API 570", "B31.4",
   "RBI", "pressure vessel", "pipeline integrity", "integrity engineer".
-tags:
-  - data-source:ibm-maximo
-  - tier:module
-  - module:asset-integrity
-  - industry:oil-and-gas
-  - persona:integrity-engineer
-  - persona:da-platform
+metadata:
+  version: "0.1.0"
+parent: maximo-overview
 ---
 
 # Maximo Integrity
@@ -22,6 +18,8 @@ tags:
 Help integrity engineers query, analyze, or build pipelines for **mechanical / pipeline / asset integrity** workflows on Maximo data. Composes with `maximo-overview` (universal data model literacy) and `maximo-reliability` (some metric UDFs overlap).
 
 This skill is **O&G-heavy**. Integrity is a major discipline at pipeline operators, refineries, and midstream gas — distinct from operational maintenance and distinct from HSE. Failures here are regulatory/safety-critical, so the queries must match what's in the Maximo UI exactly.
+
+> **FIRST:** load the `maximo-overview` skill — it carries the baseline Maximo data model, the module map, and the universal gotchas (SITEID composite keys, `WOCLASS` filtering, `ISTASK` dedup, WOSTATUS-vs-WORKORDER history). This skill builds on that foundation.
 
 ## When to use
 
@@ -67,7 +65,7 @@ If the customer has a dedicated RBI tool (PCMS, RBMI, etc.), data is usually mai
 - [gotchas.md](gotchas.md) — regulatory vs SMRP compliance, inspection-work isolation, customer-specific RBI formulas
 - [examples.sql](examples.sql) — parameterized integrity queries (vessels due, corrosion trends, audit prep)
 - [views.sql](views.sql) — `v_inspection_schedule`, `v_corrosion_trends`, `v_inspection_findings`
-- [metric_udfs.sql](metric_udfs.sql) — `corrosion_rate`, `next_inspection_due`, `inspection_on_time_compliance`, `rbi_score`
+- [metric_udfs.sql](metric_udfs.sql) — **Trusted Asset functions**: UC SQL functions you register once so Genie Spaces call them as *certified, governed metrics* instead of regenerating ad-hoc SQL. Register via `maximo-setup` or by running the file, then reference the functions by name.
 
 ## What NOT to do
 
