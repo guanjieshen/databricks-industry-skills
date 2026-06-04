@@ -64,6 +64,11 @@ For integrity-specific incident analysis (did a missed inspection cause this inc
 - **Don't expose PII** (incident person names, medical details) in any generated artifact. Aggregate or de-identify.
 - **Don't bypass the privacy / regulatory review** for incident data — every customer has rules about who can see what.
 
+## Composes with
+
+- **`maximo-asset-hierarchy`** — for incident/permit rollups by location parent ("incidents at station 4 last quarter", "open permits under region X"). Use `v_location_rollup_keys`.
+- **`maximo-labor-resources`** — for PTW (permit-to-work) competency checks: "who's qualified for hot work" via QUALPERSON + QUALIFICATION. Composing labor-resources + HSE answers "is this permit's worker qualified for this task type?"
+
 ## References
 
 - [schema.md](schema.md)

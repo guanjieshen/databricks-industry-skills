@@ -74,6 +74,11 @@ If the customer has a dedicated RBI tool (PCMS, RBMI, etc.), data is usually mai
 - **Don't conflate inspection findings with WO closure events.** A WO closing with `FAILURECODE` is not necessarily an inspection finding — it's a maintenance failure. Inspection findings are typically captured in custom columns or `plusgrelatedrec` links to integrity records.
 - **Don't recommend an inspection schedule change without flagging that it's a regulatory matter** — changes to inspection cadence can require regulator notification.
 
+## Composes with
+
+- **`maximo-asset-hierarchy`** — for inspection rollups by area / process system ("all vessels under unit X due for inspection"). Use `v_location_rollup_keys` or the `descendant_count` UDF.
+- **`maximo-labor-resources`** — for "who's qualified to perform this inspection" (joins inspection PMs to qualified labor via QUALPERSON).
+
 ## References
 
 - [schema.md](schema.md)

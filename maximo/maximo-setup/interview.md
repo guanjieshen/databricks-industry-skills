@@ -1,107 +1,134 @@
-# Maximo Setup — Interview Questions
+# Maximo Setup — Interview (profile-first)
 
-Use these questions to collect the mappings needed for the workspace glossary. Ask in **batches of 2–3**, not all at once.
+Run **after** `scripts/introspect_schema.py` has produced `draft_profile.json`. Conduct
+this like a Maximo implementation consultant **who can already see the data**: the
+profile answers "what" (the distinct values, the custom columns, which modules are
+populated). Your job is to capture what data **can't** prove — **intent, exceptions,
+process reality, and KPI definitions** — and to confirm/correct the profiler's proposals.
 
-For each question, capture: (a) the business terms the customer uses, (b) how they map to Maximo schema (table.column or value list), (c) any caveats or "this is approximate" flags.
+**Ground every question in the profile.** Don't ask "what are your statuses?" — say "your
+data has these statuses; walk me through what they mean." Ask in **batches of 2–3**, not
+all at once. For each answer capture: the business term, the schema mapping
+(table.column or value list), and any "approximate / needs validation" flag.
 
 ---
 
-## Batch 1 — Sites and locations
+## Batch 0 — Industry & how you actually use Maximo
 
-1. **"What do you call your sites in business terms? Show me one or two examples of each."**
-   - Map to: `SITEID` values
-   - Example collection: `"Mainline" → SITEID IN ('MAIN-E', 'MAIN-W', 'MAIN-C')`
+Confirm `draft_profile.json → usage_profile`.
 
-2. **"What's your asset/location hierarchy — region → station → equipment, or something different?"**
-   - Map to: `LOCATIONS` parent chain (via `LOCHIERARCHY` if needed)
-   - Capture the LEVEL at which each business term sits
+1. **"The profile {found / did not find} `plusg*` tables. Are you on the Maximo Oil & Gas (PLUSG) industry solution? What industry and sub-segment are you?"** Other add-ons to ask about: PLUSC (Calibration), PLUST (Transportation), PLUSU (Utilities), Nuclear, Aviation, Spatial.
+2. **"`modules_in_use` shows {WORKORDER, PM populated; INVENTORY empty}. Which modules do you actually run *in Maximo* vs. another system of record (SAP/Oracle/GIS)?"** Empty/sparse indicator tables usually mean the process lives elsewhere.
+3. **"What's your maintenance maturity — run-to-failure, time-based PM, condition-based, RCM/PdM? Who uses this data and what decisions do they make from it?"**
 
-## Batch 2 — Asset classes
+→ records to `industry_usage`.
 
-3. **"What asset classes do you reference by name in daily conversation (e.g. 'centrifugal pump', 'compressor', 'pressure vessel')? Do you know the CLASSSTRUCTUREID(s) they map to?"**
-   - Map to: `ASSET.CLASSSTRUCTUREID` values
-   - If the customer doesn't know: offer to enumerate `CLASSSTRUCTURE` rows and have them pick
+## Batch 1 — Work-order lifecycle & statuses
 
-4. **"How do you classify 'critical' assets? Is there a number on a scale, a tag, or a custom field?"**
-   - Map to: `ASSET.CRITICALITY` value or a custom column
+Ground in `work_order.status_values` + `proposed_open_statuses`.
 
-## Batch 3 — Work order semantics
+4. **"Your data has these statuses: {list}. Walk me through the lifecycle — which count as 'open'/backlog? Which is 'work done but not financially closed' (`COMP` vs `CLOSE`)? What are the non-standard ones {e.g. WPCOND, FAPPR} in your shop?"**
+   - → confirms `open_statuses`
+5. **"How are statuses changed — UI, MIF/integration, or a mobile/REST app?"** On classic 7.6, REST changes can skip `WOSTATUS` history (APAR IJ17261) — flag if so, it breaks time-in-status.
+6. **"The profile shows {N%} `CAN` — what drives cancellations? Any 'parking' statuses that inflate backlog age?"**
 
-5. **"In your business, what statuses count as 'open' for a work order?"**
-   - Map to: `WORKORDER.STATUS` value list
-   - Default if unknown: `('WAPPR', 'APPR', 'INPRG', 'WSCH', 'WMATL')`
+## Batch 2 — Work types & the PM-vs-CM truth
 
-6. **"What's your set of work types? Especially: how do you distinguish corrective vs preventive vs emergency?"**
-   - Map to: `WORKORDER.WORKTYPE` values (customer-configured)
+Ground in `work_order.worktype_values`.
 
-## Batch 4 — Extensions and customizations
+7. **"Your `WORKTYPE` values are {list}. Which are corrective / preventive / emergency / project? Is capital or project work mixed into maintenance WOs?"** (it inflates maintenance cost)
+   - → confirms `worktypes`
+8. **"Does `WORKTYPE='PM'` actually equal PM-generated (`PMNUM IS NOT NULL`), or do planners set it by hand?"** Affects `maximo-maintenance-cost` and `maximo-pm-planning`.
 
-7. **"Are there custom columns on `WORKORDER`, `ASSET`, or `LOCATIONS` that you rely on? Pipeline kilometer, regulatory flag, anything like that?"**
-   - Capture: column name, what it stores, who uses it
+## Batch 3 — Sites, orgs & hierarchy
 
-8. **"Any custom tables that join to the standard Maximo tables? (PCMS data, GIS data, custom integrity records, etc.)"**
-   - Capture: table name, what it joins on, what it stores
+Ground in `work_order.siteid_values`.
 
-## Batch 5 — Regulatory and HSE (O&G specific)
+9. **"Your `SITEID`s are {list} across {N} orgs. How do these roll up to business regions? Any test or decommissioned sites to exclude? Do you compare across orgs (watch for different calendars/currencies)?"**
+   - → confirms `sites` + `location_hierarchy`
+10. **"Is `LOCATIONS` hierarchy, `ASSET` parent-child, or both authoritative for 'where the work is'?"**
 
-Only if the customer is in O&G / utilities / mining and runs `maximo-integrity` or `maximo-hse`.
+## Batch 4 — Asset classes
 
-9. **"Which regulatory codes drive your inspection PMs? API 510, 570, B31.4, CSA Z662, DOT, others?"**
-   - Capture: regulatory regime → PM filter convention (often a custom column or a `PMTYPE` value)
+Ground in `asset.classstructureid_values`.
 
-10. **"How do you track Permit-to-Work — through `plusgpermitwork`, or do you have a custom system?"**
-    - Capture: whether `plusgpermitwork` is populated, or another table is the source of truth
+11. **"There are {N} `CLASSSTRUCTUREID`s. Which classes matter for reliability/integrity, and what do you call them ('centrifugal pump')? Is the taxonomy maintained, or is most equipment in a few generic classes?"**
+    - → confirms `asset_classes`
+12. **"How do you flag 'critical' assets — `ASSET.CRITICALITY`, a tag, or a custom field?"** → `criticality`
 
-## Closing — the "anything else" question
+## Batch 5 — Custom columns & tables
 
-11. **"Is there any business term or concept that you use daily that wouldn't make sense to someone reading Maximo docs cold? Anything that's caused confusion in past data work?"**
-    - Catch-all — captures tribal knowledge that isn't in standard categories
+Ground in `custom_columns` (detected) + `stats.high_null_columns`.
+
+13. **"I detected these custom columns: {list}. What does each drive? Which are mandatory in your process? Do any *replace* a standard field (e.g. a custom priority instead of `WOPRIORITY`)?"**
+    - → `custom_columns`
+14. **"Column {X} is {high_null}% null — deprecated, or only used for a subset of work?"**
+15. **"Any custom tables that join to standard Maximo (PCMS, GIS, integrity records)?"** → `custom_tables`
+
+## Batch 6 — Data integrity & process reality
+
+These decide whether analytics are trustworthy at all. Ground in `stats` + null density.
+
+16. **"`FAILUREREPORT` is {N%} populated — if low, MTBF/failure-mode analysis isn't reliable. Do engineers actually code failures?"**
+17. **"Are labor hours *booked* (`LABTRANS`) or estimated? Mobile vs back-office entry?"**
+18. **"Did you migrate from an older Maximo or another CMMS? Pre-cutover WOs often have null history / placeholder statuses — what's the cutover date?"**
+19. **"Are dates UTC or site-local?"** (changes "completed yesterday")
+
+## Batch 7 — KPIs & reconciliation
+
+20. **"How do you define PM compliance (numerator/denominator + tolerance), schedule compliance window, and 'backlog' today?"** → so the certified metrics reconcile to their definitions.
+21. **"Show me one number you currently trust — a report you run — so we reconcile our queries to it."** The fastest way to earn trust.
+
+## Batch 8 — Regulatory & HSE (only if PLUSG present / O&G-utilities-mining)
+
+22. **"Which regulatory codes drive inspection PMs (API 510/570, B31.4, CSA Z662, DOT)? How is inspection work isolated — `WORKTYPE`, a custom flag, or a `JPNUM` set?"** → `regulatory_codes`
+23. **"Is Permit-to-Work in `plusgpermitwork`, or a custom/other system? What's your TRIR hours-worked source (usually a corporate HR system, not Maximo)?"**
+
+## Closing — tribal knowledge
+
+24. **"Any business term or quirk that's caused confusion in past data work? Anything that's burned you?"** → `tribal_knowledge`
 
 ---
 
 ## How to record answers
 
-Save as `answers.json` in this shape (the `generate_glossary.py` script consumes this):
+The profiler seeds most of this; you confirm. Save as `answers.json` (consumed by
+`generate_glossary.py`). Same shape as before **plus** the new `industry_usage` block:
 
 ```json
 {
   "customer": "enbridge",
-  "sites": {
-    "Mainline": ["MAIN-E", "MAIN-W", "MAIN-C"],
-    "Field": ["FLD-AB1", "FLD-AB2"]
+  "industry_usage": {
+    "industry": "Midstream oil & gas (liquids + gas transmission)",
+    "industry_solutions": ["Oil & Gas (PLUSG)"],
+    "modules_in_use": ["work_management", "preventive_maintenance", "asset_integrity", "hse"],
+    "modules_elsewhere": {"inventory": "SAP", "procurement": "SAP"},
+    "maintenance_maturity": "time-based PM moving to condition-based on rotating equipment",
+    "kpis": ["PM compliance (completed within 10% of frequency)", "schedule compliance (weekly)"],
+    "notes": ["Capital work is WORKTYPE=CAP — exclude from maintenance cost"]
   },
-  "location_hierarchy": {
-    "Region": "LOCHIERARCHY level 1",
-    "Station": "LOCHIERARCHY level 2",
-    "Equipment": "LOCHIERARCHY level 3"
-  },
-  "asset_classes": {
-    "centrifugal pump": [4521, 4522],
-    "reciprocating compressor": [5022],
-    "pressure vessel": [7100, 7101, 7102]
-  },
-  "criticality": {
-    "high": "ASSET.CRITICALITY >= 8",
-    "critical": "ASSET.CRITICALITY = 10"
-  },
+  "sites": { "Mainline": ["MAIN-E", "MAIN-W", "MAIN-C"], "Field": ["FLD-AB1", "FLD-AB2"] },
+  "location_hierarchy": { "Region": "LOCHIERARCHY level 1", "Station": "LOCHIERARCHY level 2" },
+  "asset_classes": { "centrifugal pump": [4521, 4522], "pressure vessel": [7100, 7101] },
+  "criticality": { "critical": "ASSET.CRITICALITY = 10" },
   "open_statuses": ["WAPPR", "APPR", "INPRG", "WSCH", "WMATL", "WPCOND"],
-  "worktypes": {
-    "corrective": ["CM", "EM"],
-    "preventive": ["PM"],
-    "emergency": ["EM"],
-    "regulatory": ["REG", "INSP"]
-  },
+  "worktypes": { "corrective": ["CM", "EM"], "preventive": ["PM"], "capital": ["CAP"] },
   "custom_columns": {
     "WORKORDER.WO_PIPELINE_KM": "Pipeline kilometer of the work site",
     "WORKORDER.WO_REG_FLAG": "Y/N — does this WO satisfy a regulatory requirement"
   },
-  "custom_tables": {
-    "eam.maximo_silver.pcms_thickness_readings": "Joined to ASSET on assetnum; corrosion thickness gauging readings"
-  },
+  "custom_tables": { "eam.maximo_silver.pcms_thickness_readings": "Joined to ASSET on assetnum; corrosion gauging" },
   "regulatory_codes": ["API 510", "API 570", "CSA Z662"],
-  "tribal_knowledge": [
-    "'In service' colloquially means STATUS = 'INPRG', not the formal Maximo asset status",
-    "Region 5 was renamed to 'North' in 2024 but the LOCATIONS records still say REG5"
-  ]
+  "tribal_knowledge": ["'In service' colloquially means STATUS='INPRG', not the asset status"]
 }
 ```
+
+### `draft_profile.json` → `answers.json` mapping (what the profiler pre-fills)
+| Profiler field | Interview confirms → answers.json key |
+|---|---|
+| `usage_profile` (plusg_present, modules_in_use) | Batch 0 → `industry_usage` |
+| `work_order.proposed_open_statuses` | Batch 1 → `open_statuses` |
+| `work_order.worktype_values` | Batch 2 → `worktypes` |
+| `work_order.siteid_values` | Batch 3 → `sites` / `location_hierarchy` |
+| `asset.classstructureid_values` | Batch 4 → `asset_classes` |
+| `custom_columns` (detected) | Batch 5 → `custom_columns` |

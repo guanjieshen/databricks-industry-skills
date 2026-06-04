@@ -127,5 +127,201 @@
       "SITEID": "Composite with WONUM.",
       "FAILURECODE": "FK to FAILURECODE."
     }
+  },
+  "LABOR": {
+    "table_comment": "IBM Maximo labor master — one row per maintainable resource (employee or contractor). Joined by LABORCODE from LABTRANS, ASSIGNMENT, WORKORDER.LEAD. See the maximo-labor-resources skill for the full domain.",
+    "columns": {
+      "LABORCODE": "Business key — unique within ORGID.",
+      "ORGID": "Composite with LABORCODE.",
+      "PERSONID": "FK to PERSON. NULL for contractor resources that have no PERSON link.",
+      "CRAFT": "Default craft (FK to CRAFT).",
+      "SKILLLEVEL": "Default skill level.",
+      "STATUS": "ACTIVE or INACTIVE. Only ACTIVE can be assigned new work.",
+      "VENDOR": "FK to COMPANIES — populated for contractor labor (most common contractor flag).",
+      "OUTSIDELABOR": "1 if outside (vendor) labor — alternate contractor flag.",
+      "CALNUM": "Default calendar (FK to CALENDAR).",
+      "SHIFTNUM": "Default shift."
+    }
+  },
+  "PERSON": {
+    "table_comment": "Person master. PII-sensitive — handle names/emails/phone with care. See the maximo-labor-resources skill for usage patterns.",
+    "columns": {
+      "PERSONID": "Business key — unique globally (not org-scoped).",
+      "DISPLAYNAME": "Display name (PII).",
+      "STATUS": "ACTIVE or INACTIVE.",
+      "SUPERVISOR": "FK to PERSON.PERSONID — chain of supervision.",
+      "DEPARTMENT": "Department code."
+    }
+  },
+  "CRAFT": {
+    "table_comment": "Craft master (ELEC, MECH, INST, etc.).",
+    "columns": {
+      "CRAFT": "Craft code.",
+      "ORGID": "Composite.",
+      "DESCRIPTION": "Free text.",
+      "OUTSIDEONLY": "1 if craft is contractor-only."
+    }
+  },
+  "LABORCRAFTRATE": {
+    "table_comment": "Pay rates per (labor, craft, skill level). Currency varies — do not aggregate RATE across CURRENCYCODE without normalizing.",
+    "columns": {
+      "LABORCODE": "FK to LABOR.",
+      "ORGID": "Composite.",
+      "CRAFT": "FK to CRAFT.",
+      "SKILLLEVEL": "Skill level granularity.",
+      "RATE": "Pay rate.",
+      "CURRENCYCODE": "Currency — be careful aggregating across currencies."
+    }
+  },
+  "QUALIFICATION": {
+    "table_comment": "Qualification catalog. PERSONS hold qualifications via QUALPERSON. See the maximo-labor-resources skill.",
+    "columns": {
+      "QUALIFICATIONID": "Qualification code.",
+      "ORGID": "Composite.",
+      "DESCRIPTION": "Free text.",
+      "STATUS": "ACTIVE or INACTIVE.",
+      "CRAFT": "Optional — qualification tied to a craft.",
+      "REQUIREDFORWORK": "1 if the qualification is mandatory for matched work."
+    }
+  },
+  "QUALPERSON": {
+    "table_comment": "Person ↔ Qualification with expiry. For 'qualified labor' queries, filter STATUS='ACTIVE' AND (EXPIRYDATE IS NULL OR EXPIRYDATE > current_date()).",
+    "columns": {
+      "PERSONID": "FK to PERSON.",
+      "QUALIFICATIONID": "FK to QUALIFICATION.",
+      "EFFECTIVEDATE": "When the person earned it.",
+      "EXPIRYDATE": "When it lapses (NULL = never). Filter to keep current certs only.",
+      "STATUS": "ACTIVE, EXPIRED, etc.",
+      "CERTIFICATEID": "Optional cert identifier."
+    }
+  },
+  "CERTIFICATION": {
+    "table_comment": "Certification catalog (in some customer models, a subset of QUALIFICATION).",
+    "columns": {
+      "CERTIFICATIONID": "Certification code.",
+      "DESCRIPTION": "Free text.",
+      "STATUS": "ACTIVE or INACTIVE."
+    }
+  },
+  "CREW": {
+    "table_comment": "Crew master. Crews are time-bound groupings of labor — see CREWLABOR for membership.",
+    "columns": {
+      "CREWID": "Crew identifier.",
+      "ORGID": "Composite.",
+      "CREWTYPE": "FK to CREWTYPE (required craft mix).",
+      "STATUS": "ACTIVE or INACTIVE.",
+      "BASELOCATION": "Home location."
+    }
+  },
+  "CREWLABOR": {
+    "table_comment": "Crew composition. Time-bounded — STARTDATE/ENDDATE define membership window. For current crew, filter STARTDATE <= current_date() AND (ENDDATE IS NULL OR ENDDATE > current_date()).",
+    "columns": {
+      "CREWID": "FK to CREW.",
+      "ORGID": "Composite.",
+      "LABORCODE": "FK to LABOR — one row per labor member.",
+      "STARTDATE": "Membership start.",
+      "ENDDATE": "Membership end (NULL = current).",
+      "POSITION": "Crew position (lead, member, etc.)."
+    }
+  },
+  "PERSONGROUP": {
+    "table_comment": "Named person group. Members in PERSONGROUPTEAM. Used by workflow assignment, paging, on-call rotation. Can nest — beware loops.",
+    "columns": {
+      "PERSONGROUP": "Group identifier.",
+      "DESCRIPTION": "Free text.",
+      "USEFORAVAIL": "1 if usable for availability/on-call logic."
+    }
+  },
+  "CALENDAR": {
+    "table_comment": "Working calendar identifier. Specific work periods (shifts, days off) in WORKPERIOD.",
+    "columns": {
+      "CALNUM": "Calendar identifier.",
+      "ORGID": "Composite.",
+      "DESCRIPTION": "Free text.",
+      "STARTDATE": "Calendar validity start.",
+      "ENDDATE": "Calendar validity end."
+    }
+  },
+  "WORKPERIOD": {
+    "table_comment": "Specific work periods per calendar — shifts, days off, holidays. Often sparsely populated — probe coverage (MIN/MAX startdate) before claiming 'we have capacity for X'.",
+    "columns": {
+      "CALNUM": "FK to CALENDAR.",
+      "ORGID": "Composite.",
+      "SHIFTNUM": "Shift identifier.",
+      "STARTDATE": "Period start (date+time).",
+      "ENDDATE": "Period end.",
+      "HOURS": "Available hours in the period.",
+      "PERIODTYPE": "WORK, HOLIDAY, EXCEPTION, etc."
+    }
+  },
+  "ASSIGNMENT": {
+    "table_comment": "Labor ↔ WO assignment. One row per labor scheduled for specific WO work.",
+    "columns": {
+      "WONUM": "FK to WORKORDER.",
+      "SITEID": "Composite.",
+      "LABORCODE": "FK to LABOR (NULL if assigned to a CRAFT only, not a specific person).",
+      "CRAFT": "Craft assigned.",
+      "SCHEDDATE": "Scheduled start.",
+      "ESTDUR": "Estimated duration.",
+      "STATUS": "NEW, ASSIGNED, COMPLETE."
+    }
+  },
+  "LOCHIERARCHY": {
+    "table_comment": "Multi-system parent-child for LOCATIONS. One row per (location, parent, systemid). A single location can appear in multiple hierarchies (Operating, Storeroom, Network). Always filter SYSTEMID. See the maximo-asset-hierarchy skill.",
+    "columns": {
+      "LOCATION": "The child location.",
+      "PARENT": "The parent location.",
+      "SYSTEMID": "Hierarchy system — typically PRIMARY.",
+      "SITEID": "Composite."
+    }
+  },
+  "LOCANCESTOR": {
+    "table_comment": "Location closure table — one row per (descendant, ancestor) pair at any depth. The IBM-canonical traversal mechanism for hierarchical rollups. Use instead of naïve PARENT self-joins for multi-level analytics.",
+    "columns": {
+      "LOCATION": "The descendant location.",
+      "ANCESTOR": "An ancestor at any depth.",
+      "SYSTEMID": "Hierarchy system — match LOCHIERARCHY.",
+      "SITEID": "Composite."
+    }
+  },
+  "ASSETANCESTOR": {
+    "table_comment": "Asset closure table — one row per (descendant, ancestor) pair at any depth in the ASSET hierarchy.",
+    "columns": {
+      "ASSETNUM": "The descendant asset.",
+      "ANCESTOR": "An ancestor asset at any depth.",
+      "SITEID": "Composite.",
+      "HIERARCHYLEVELS": "Number of levels between descendant and ancestor (0 = self if convention includes it)."
+    }
+  },
+  "SYSTEM": {
+    "table_comment": "Hierarchy system definition. Each LOCHIERARCHY row belongs to one system. Default is PRIMARY (the operational hierarchy).",
+    "columns": {
+      "SYSTEMID": "System identifier.",
+      "ORGID": "Org-scoped.",
+      "DESCRIPTION": "Free text.",
+      "NETWORK": "1 if network-type (graph rather than tree).",
+      "PRIMARYSYSTEM": "1 if this is the default system."
+    }
+  },
+  "CLASSSTRUCTURE": {
+    "table_comment": "Asset / location classification tree. A taxonomy hierarchy applied via CLASSSTRUCTUREID. Separate from LOCATIONS physical hierarchy — these answer different questions. Maximo does not ship a CLASSANCESTOR closure table — use recursive CTE on PARENT.",
+    "columns": {
+      "CLASSSTRUCTUREID": "Class identifier.",
+      "PARENT": "Parent class.",
+      "DESCRIPTION": "E.g. 'Centrifugal Pump', 'Rotating Equipment'.",
+      "CLASSIFICATIONID": "Full classification path string in some installs.",
+      "USEWITH": "Whether this class applies to ASSET, LOCATIONS, ITEM, etc."
+    }
+  },
+  "ASSETSPEC": {
+    "table_comment": "Per-asset specification values, driven by CLASSSPEC at the class level. For analytics like 'show me all pumps with flow rate > 5000 gpm', join ASSETSPEC on ASSETATTRID.",
+    "columns": {
+      "ASSETNUM": "FK to ASSET.",
+      "SITEID": "Composite.",
+      "ASSETATTRID": "Specification attribute identifier (e.g. FLOWRATE).",
+      "ALNVALUE": "Alphanumeric value.",
+      "NUMVALUE": "Numeric value.",
+      "DATEVALUE": "Date value."
+    }
   }
 }

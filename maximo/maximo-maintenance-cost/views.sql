@@ -179,3 +179,46 @@ FULL OUTER JOIN mat_by_wt m
    AND l.worktype = m.worktype
    AND l.pm_source = m.pm_source
    AND l.period_start = m.period_start;
+
+
+-- -----------------------------------------------------------------------------
+-- v_location_cost_summary
+-- Maintenance cost rolled up to ANY location parent (uses LOCANCESTOR from
+-- maximo-asset-hierarchy). One row per (rollup_location, period_start).
+--
+-- Composes with maximo-asset-hierarchy. Requires LOCANCESTOR Silver table.
+-- If LOCANCESTOR is missing in the customer's environment, fall back to the
+-- v_asset_cost_summary (one level — asset only) and document the limitation.
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE VIEW {{catalog}}.{{gold_schema}}.v_location_cost_summary
+COMMENT 'Per-(rollup_location, month) maintenance cost rollup using LOCANCESTOR. Each asset cost row appears under every ancestor location in its physical hierarchy. Composes with maximo-asset-hierarchy. SYSTEMID = PRIMARY.'
+AS
+WITH asset_costs AS (
+    SELECT
+        s.assetnum, s.siteid, s.period_start,
+        s.total_labor_cost, s.total_material_cost, s.total_cost
+    FROM {{catalog}}.{{gold_schema}}.v_asset_cost_summary s
+),
+asset_locations AS (
+    SELECT a.assetnum, a.siteid, a.location, a.classstructureid
+    FROM {{catalog}}.{{silver_schema}}.asset a
+    WHERE a.__END_AT IS NULL
+)
+SELECT
+    la.ancestor                                            AS rollup_location,
+    ac.siteid,
+    ac.period_start,
+    a_loc.description                                       AS rollup_location_description,
+    a_loc.type                                              AS rollup_location_type,
+    SUM(ac.total_labor_cost)                                AS total_labor_cost,
+    SUM(ac.total_material_cost)                             AS total_material_cost,
+    SUM(ac.total_cost)                                      AS total_cost,
+    COUNT(DISTINCT ac.assetnum)                             AS distinct_assets
+FROM asset_costs ac
+JOIN asset_locations al
+    ON al.assetnum = ac.assetnum AND al.siteid = ac.siteid
+JOIN {{catalog}}.{{silver_schema}}.locancestor la
+    ON la.location = al.location AND la.siteid = al.siteid AND la.systemid = 'PRIMARY'
+LEFT JOIN {{catalog}}.{{silver_schema}}.locations a_loc
+    ON a_loc.location = la.ancestor AND a_loc.siteid = la.siteid AND a_loc.__END_AT IS NULL
+GROUP BY la.ancestor, ac.siteid, ac.period_start, a_loc.description, a_loc.type;

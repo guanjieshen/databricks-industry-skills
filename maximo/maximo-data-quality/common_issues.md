@@ -175,8 +175,41 @@ Wrong number observed
 ├─ Counts inflated → Probe 4 (WOCLASS) → Probe 3 (ISTASK)
 ├─ History sparse → Probe 1 (WOSTATUS)
 ├─ Duplicates → Probe 2 (WONUM uniqueness)
-├─ Labor/cost off → Probe 3, then Probe 5 (orphans)
+├─ Labor/cost off → Probe 3, then Probe 5 (orphans), then Probe 11 (LABTRANS → LABOR orphans)
 ├─ Site totals weird → Probe 7 (cross-site dupes), Probe 6 (hierarchy orphans)
 ├─ Trend broken → Probe 8 (dates), Probe 9 (PM gen)
-└─ Custom column issue → Probe 10
+├─ Custom column issue → Probe 10
+├─ Hierarchy rollup off → Probe 12 (LOCANCESTOR staleness)
+└─ Qualified labor over-counted → Probe 13 (expired QUALPERSON marked ACTIVE)
 ```
+
+---
+
+## Issue 11 — `LABTRANS` orphans against `LABOR` (composes with `maximo-labor-resources`)
+
+**Probe**: `Probe 11`
+
+**Root cause**: `LABTRANS.LABORCODE` references a labor record that doesn't exist in `LABOR`. Common when:
+- Labor records were deleted (hard delete) but transactions retained
+- Cross-organization labor (labor borrowed from another org with a different `ORGID`)
+- Bronze ingestion of `LABOR` lags `LABTRANS`
+
+**Remediation**: At analytics time, either exclude orphan transactions or surface them as a separate "unattributable labor" bucket. Don't silently include — they inflate craft / contractor totals.
+
+## Issue 12 — `LOCANCESTOR` staleness (composes with `maximo-asset-hierarchy`)
+
+**Probe**: `Probe 12`
+
+**Root cause**: `LOCANCESTOR` is supposed to materialize all ancestor-descendant pairs but isn't in sync with `LOCHIERARCHY` (e.g. ingestion didn't capture a Maximo-side rebuild). The 2-hop probe finds parent-of-parent pairs that should be in `LOCANCESTOR` but aren't.
+
+**Remediation**:
+- If many rows missing: fall back to recursive CTE on `LOCHIERARCHY` for hierarchy queries (see `maximo-asset-hierarchy/gotchas.md`).
+- If few rows missing: trigger a Maximo-side hierarchy rebuild or fix Bronze ingestion to capture the closure update.
+
+## Issue 13 — Qualifications still ACTIVE past EXPIRYDATE (composes with `maximo-labor-resources`)
+
+**Probe**: `Probe 13`
+
+**Root cause**: `QUALPERSON.STATUS` should transition to `EXPIRED` when `EXPIRYDATE` passes, but the Maximo automatic-transition job is sometimes disabled or fails silently. Rows show `STATUS = 'ACTIVE'` even after expiry.
+
+**Remediation**: Always filter `(EXPIRYDATE IS NULL OR EXPIRYDATE > current_date())` in "qualified labor" queries — don't trust `STATUS` alone. The shipped `qualified_labor_count` UDF in `maximo-labor-resources` already does this.

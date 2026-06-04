@@ -89,23 +89,11 @@ forecast_next_due ≈ LASTREADINGDATE + (FREQUENCY - LASTREADING) / AVERAGE
 
 The shipped `meter_based_pm_forecast` UDF handles this. Don't bake assumptions about non-zero averages into custom queries.
 
-## 9. Resource capacity tables are often half-populated
+## 9. Resource capacity content moved to `maximo-labor-resources`
 
-`CALENDAR` / `WORKPERIOD` define crew availability. In real customer data, they're often:
-- Populated for the current year but not future years
-- Populated at a generic site level but missing per-crew calendars
-- Out-of-date (last year's holidays, not this year's)
+`CALENDAR` / `WORKPERIOD` / `AVAILREFLY` define crew availability — they're labor-master concerns, owned by [`../maximo-labor-resources/`](../maximo-labor-resources/). When the user asks workload-vs-capacity questions, **compose both skills**: pm-planning provides the forecast workload (`v_pm_workload_by_craft`, `pm_workload_hours` UDF); labor-resources provides capacity (`v_crew_capacity`, `crew_capacity_hours` UDF).
 
-Always check coverage before claiming workload-vs-capacity:
-
-```sql
--- Does the customer have populated capacity for the forecast window?
-SELECT calnum, MIN(startdate), MAX(startdate)
-FROM workperiod
-GROUP BY calnum;
-```
-
-If coverage is sparse, present forecast workload alone (without capacity comparison) and tell the user why.
+See `../maximo-labor-resources/gotchas.md` gotcha 3 for the half-populated coverage probe — that's where the gotcha lives now.
 
 ## 10. JOBPLAN can be shared across many PMs
 

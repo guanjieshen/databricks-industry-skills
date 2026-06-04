@@ -1,0 +1,12 @@
+{
+  "query": "Show me forecast workload vs available craft capacity for next 4 weeks",
+  "expected_skill": "maximo-labor-resources",
+  "expected_behavior": [
+    "Loads BOTH maximo-labor-resources AND maximo-pm-planning (composition — workload-vs-capacity is the canonical cross-skill query for these two)",
+    "Workload side: uses v_pm_workload_by_craft or pm_workload_hours UDF (pm-planning), grouped by craft × week",
+    "Capacity side: uses v_crew_capacity or crew_capacity_hours UDF (labor-resources), summing WORKPERIOD scheduled hours net of AVAILREFLY absences",
+    "Probes WORKPERIOD coverage before claiming capacity — if rows don't exist for the forecast window, surfaces that explicitly",
+    "Filters PM.STATUS = 'ACTIVE' and uses COALESCE(EXTDATE, NEXTDATE) for the effective due date",
+    "Returns gap (workload − capacity) by craft × week, flagged OVER/OK/UNDER"
+  ]
+}
