@@ -85,7 +85,10 @@ Be precise: **Genie Code** is the agent harness; **Genie Spaces** is a text-to-S
 
 ## Genie-Code-native value
 - [ ] If the family has a `-setup` skill, it registers UC table/column comments
-- [ ] Canonical metrics ship as Trusted Asset UC functions (`metric_udfs.sql`) where applicable
+- [ ] If the module's measures are sliceable, it ships a `metric_view.yaml` (semantic layer) — the primary deliverable
+- [ ] Every metric-view field/measure carries **agent metadata**: `display_name`, `comment`, `format`, and `synonyms` (real-world vocabulary, not just the column name) so Genie can discover it
+- [ ] Metric-view *creation/registration mechanics* are deferred to the platform skill `databricks-metric-views` (not re-taught); the skill supplies only the source-specific YAML
+- [ ] Canonical metrics ship as Trusted Asset UC functions (`metric_udfs.sql`) where applicable; metric-view measures and UDFs encode the *same* definitions (no drift)
 - [ ] CLI examples rely on ambient in-workspace auth (no `--profile`; that's local-only)
 - [ ] MCP tools, if any, are fully qualified (`ServerName:tool_name`)
 

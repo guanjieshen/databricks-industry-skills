@@ -66,11 +66,27 @@ If a business term is ambiguous and no glossary covers it, **ask before guessing
 
 ## Workflow
 
-Be explicit. Resolve new questions in this priority order:
+The most common deliverable on top of a source system is a **metric view** — a
+governed semantic layer (canonical measures + agent metadata) that Genie Agents,
+AI/BI dashboards, and BI tools all consume. Default to it.
 
-1. **Parameterized example** — check [examples.sql](examples.sql) for a matching pattern; use it with the user's parameters.
-2. **Pre-joined view** — compose from [views.sql](views.sql).
-3. **Raw tables** — only when the view layer doesn't cover the join shape; explain why.
+**Building / extending the semantic layer (the primary deliverable):**
+- Start from [metric_view.yaml](metric_view.yaml) — adapt its dimensions, measures,
+  and **agent metadata** (`display_name`, `synonyms`, `comment`, `format`) to this
+  module's domain. `synonyms` are the highest-leverage field: they carry the
+  real-world vocabulary that lets Genie discover each measure from natural language.
+- Reuse the canonical measure logic already encoded in [metric_udfs.sql](metric_udfs.sql);
+  the metric view is the sliceable surface, the UDFs are the parameterized/callable form.
+- Defer *how to create / register / refresh* a metric view to the platform skill
+  [`databricks-metric-views`](https://github.com/databricks-solutions/ai-dev-kit/tree/main/databricks-skills/databricks-metric-views) — this skill supplies the source-specific content, not the mechanics.
+
+**Answering an ad-hoc question:** resolve in this priority order:
+
+1. **Metric view** — if a metric view exists, query it with `MEASURE(...)`; it already encodes the canonical definitions.
+2. **Trusted UDF** — call a function from [metric_udfs.sql](metric_udfs.sql) when the metric takes parameters.
+3. **Parameterized example** — check [examples.sql](examples.sql) for a matching pattern; use it with the user's parameters.
+4. **Pre-joined view** — compose from [views.sql](views.sql).
+5. **Raw tables** — only when nothing above covers the join shape; explain why.
 
 ## What's in this skill
 
@@ -81,6 +97,7 @@ Tell Genie *when* to load each sibling file — not just that it exists:
 - [examples.sql](examples.sql) — **load when** the user's question matches a known pattern.
 - [views.sql](views.sql) — DDL for pre-joined views. Registered once by the family's `-setup` skill (not run from this skill).
 - [metric_udfs.sql](metric_udfs.sql) — Trusted Asset UC SQL functions. Genie calls them as governed metrics. Registered once via `-setup`.
+- [metric_view.yaml](metric_view.yaml) — **load when** building/extending the source's semantic layer, a Genie Agent, or a dashboard (the most common ask). The canonical metric-view definition: dimensions + measures + **agent metadata** (`synonyms`/`display_name`/`comment`/`format`) that drives Genie discovery. Registered once via `-setup`; creation mechanics live in the platform skill `databricks-metric-views`.
 
 ## What NOT to do
 
@@ -93,6 +110,7 @@ Tell Genie *when* to load each sibling file — not just that it exists:
 ## Composes with
 
 - **`<source>-overview`** — baseline data-model literacy + universal gotchas. Always load first.
-- **`<source>-setup`** — registers the views in [views.sql](views.sql) and Trusted UDFs in [metric_udfs.sql](metric_udfs.sql). Never run those scripts from this skill — defer to setup's preview-then-apply workflow.
+- **`<source>-setup`** — registers the views in [views.sql](views.sql), the Trusted UDFs in [metric_udfs.sql](metric_udfs.sql), and the metric view in [metric_view.yaml](metric_view.yaml). Never run those scripts from this skill — defer to setup's preview-then-apply workflow.
+- **`databricks-metric-views`** (platform) — the *mechanics* of creating/registering/refreshing a metric view. This skill supplies the source-specific YAML + agent metadata; that skill supplies the how.
 - **Other module skills** — name them explicitly. *"For X questions, load `<source>-other-module`."*
 - **Platform skills** — when the user's request crosses into pipeline / dashboard / UC mechanics, reference the canonical platform skill (e.g. [`databricks-genie`](https://github.com/databricks-solutions/ai-dev-kit/blob/main/databricks-skills/databricks-genie/SKILL.md), [`databricks-spark-declarative-pipelines`](https://github.com/databricks-solutions/ai-dev-kit/tree/main/databricks-skills/databricks-spark-declarative-pipelines)).

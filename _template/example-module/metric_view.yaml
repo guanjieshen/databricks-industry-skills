@@ -1,0 +1,141 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Metric view — the source's SEMANTIC LAYER for Genie / AI-BI.
+#
+# A metric view decouples a measure's definition from grouping/filtering: define
+# "open count" or "avg cost per record" ONCE, and any agent or dashboard can
+# slice it by any dimension below. The AGENT METADATA on each field/measure
+# (display_name + comment + format + synonyms) is the highest-value part of this
+# file: synonyms are what let Genie DISCOVER a measure from natural language, and
+# this concept-level layer is exactly what UC comments alone cannot capture.
+#
+# This file carries the SME CONTENT — which measures matter and what a domain
+# user actually calls them. For how to CREATE / register / refresh a metric view,
+# load the platform skill `databricks-metric-views`; do NOT re-teach mechanics here.
+#   https://docs.databricks.com/aws/en/business-semantics/metric-views/
+#   https://docs.databricks.com/aws/en/business-semantics/agent-metadata        (format + synonyms reference)
+#   https://docs.databricks.com/aws/en/business-semantics/metric-views/yaml-reference
+#   https://docs.databricks.com/aws/en/business-semantics/metric-views/advanced-techniques
+#
+# Registered once, owned by the family's -setup skill (not run from this skill), e.g.:
+#   CREATE VIEW :catalog.:schema.example_metrics WITH METRICS LANGUAGE YAML AS $$ <body below> $$;
+# Requires DBR 17.3+ and YAML version 1.1 for the agent-metadata fields.
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: 1.1
+source: :catalog.:schema.v_example_enriched     # prefer a pre-joined Gold view (see views.sql)
+comment: Canonical semantic layer for <source>. One measure definition, sliceable by any dimension.
+
+filter: deleted_at IS NULL                        # apply a universal gotcha once, here
+
+# ── Dimensions: the fields users group / filter by ───────────────────────────
+# Put agent metadata on EVERY dimension. synonyms (what a domain user types) is
+# what drives Genie discovery — list the real-world vocabulary, not just the column name.
+fields:
+  - name: site
+    expr: SITEID
+    display_name: Site
+    comment: Operating site — the composite-key scope for this source (see overview gotchas).
+    synonyms:
+      - location
+      - facility
+      - plant
+
+  - name: status
+    expr: STATUS
+    display_name: Status
+    comment: Lifecycle status. Resolve customer-renamed synonyms via the workspace glossary skill.
+    synonyms:
+      - state
+      - wo status
+
+  # Derived dimension via CASE — segment/bucket a raw column. Use a block scalar (|)
+  # for multi-line expressions. Confirm the thresholds with the user (no defensible default).
+  - name: cost_tier
+    expr: |
+      CASE
+        WHEN ACTCOST > 100000 THEN 'High'
+        WHEN ACTCOST > 10000  THEN 'Medium'
+        ELSE 'Low'
+      END
+    display_name: Cost Tier
+    comment: Cost band derived from ACTCOST. Thresholds are illustrative — confirm per deployment.
+    synonyms:
+      - cost band
+      - spend tier
+
+  - name: reported_date
+    expr: REPORTDATE
+    display_name: Reported Date
+    synonyms:
+      - created date
+      - open date
+    format:
+      type: date
+      date_format: year_month_day
+      leading_zeros: true
+
+# ── Measures: defined once, grouped by any field above ───────────────────────
+measures:
+  - name: record_count
+    expr: COUNT(1)
+    display_name: Record Count
+    comment: Row count after the universal filter.
+    synonyms:
+      - number of records
+      - volume
+      - count
+    format:
+      type: number
+      decimal_places:
+        type: all
+      hide_group_separator: true
+
+  - name: open_count
+    expr: COUNT_IF(STATUS IN ('WAPPR', 'APPR', 'INPRG'))   # the open-status set is customer-configurable
+    display_name: Open Count
+    comment: Open items. Confirm the open-status set with the user (see "Questions to surface first").
+    synonyms:
+      - open records
+      - backlog
+
+  - name: total_cost
+    expr: SUM(ACTCOST)
+    display_name: Total Cost
+    comment: Total actual cost across records.
+    synonyms:
+      - actual cost
+      - spend
+    format:
+      type: currency
+      currency_code: USD
+      decimal_places:
+        type: exact
+        places: 2
+      hide_group_separator: false
+      abbreviation: compact
+
+  - name: avg_cost_per_record
+    expr: MEASURE(total_cost) / MEASURE(record_count)      # composable — reuse measures, no duplication
+    display_name: Avg Cost per Record
+    comment: Average actual cost per record.
+    synonyms:
+      - average cost
+      - cost per item
+    format:
+      type: currency
+      currency_code: USD
+      decimal_places:
+        type: exact
+        places: 2
+
+  # Advanced: 7-day trailing window. See metric-views/advanced-techniques.
+  - name: t7d_open_count
+    expr: COUNT_IF(STATUS IN ('WAPPR', 'APPR', 'INPRG'))
+    display_name: Open Count (7-day trailing)
+    synonyms:
+      - rolling open count
+      - open last 7 days
+    window:
+      - order: reported_date
+        range: trailing 7 day
+        semiadditive: last
