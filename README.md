@@ -110,7 +110,15 @@ Planned future families (see `_template/`):
 
 Each family folder is self-contained — install only the families you need.
 
-### Option 1: workspace-scoped install (admin, visible to all users)
+### Option 1 (recommended): the installer notebook
+
+Import [`install_industry_skills.py`](./install_industry_skills.py) into your workspace
+(**Workspace → Import → File**) and run it. No clone or CLI setup needed — it pulls the skills
+straight from GitHub. Pick the data source(s) you want in the `FAMILIES` widget (e.g. `maximo`)
+and the `SCOPE` (`user` or `workspace`); it installs **all skills in each selected family**.
+Nothing installs until you select a family.
+
+### Option 2: workspace-scoped install via CLI (admin, visible to all users)
 
 ```bash
 # clone the repo
@@ -129,7 +137,7 @@ databricks workspace import-dir \
   --overwrite
 ```
 
-### Option 2: user-scoped install (just for you)
+### Option 3: user-scoped install via CLI (just for you)
 
 ```bash
 databricks workspace import-dir \

@@ -66,7 +66,12 @@ Discovery + quality test cases live in [`evals/`](./evals/) (`query → expected
 2. Run `maximo-setup` once per customer — it creates the workspace-tier glossary skill that the other skills reference.
 3. Install whichever module skills match the customer's primary use cases.
 
-## Install command
+## Install
+
+**Recommended:** run the repo's [`install_industry_skills.py`](../install_industry_skills.py)
+notebook and pick `FAMILY = maximo` — it installs all Maximo skills straight from GitHub, no clone needed.
+
+**Or install via CLI:**
 
 ```bash
 # Workspace-scoped (admin, visible to all users)

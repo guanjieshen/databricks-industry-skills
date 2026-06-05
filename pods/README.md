@@ -73,7 +73,12 @@ An operator running both can ask Genie *"corrosion rate on vessel X"* (Maximo) *
 3. Install `pods-linear-referencing` — every analytical question depends on it.
 4. Install whichever module skills match the customer's primary use cases (`pods-ili-integrity` first for most midstream operators).
 
-## Install command
+## Install
+
+**Recommended:** run the repo's [`install_industry_skills.py`](../install_industry_skills.py)
+notebook and pick `FAMILY = pods` — it installs all PODS skills straight from GitHub, no clone needed.
+
+**Or install via CLI:**
 
 ```bash
 # Workspace-scoped (admin, visible to all users)
