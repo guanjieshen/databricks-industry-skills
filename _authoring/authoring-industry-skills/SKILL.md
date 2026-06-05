@@ -16,7 +16,7 @@ description: |
   "split responsibility between setup and skills",
   "contribute to industry-skills", "skill best practices".
 metadata:
-  version: "0.2.1"
+  version: "0.2.2"
 ---
 
 # Authoring Industry Skills
@@ -205,11 +205,12 @@ Build foundation first, then modules. Every skill must pass: *"Would Genie behav
 
 ## Genie-Code-native value adds
 
-The three things that make a skill worth more than generic docs:
+The things that make a skill worth more than generic docs:
 
 1. **UC comments are the #1 quality lever.** Missing comments degrade SQL quality. Every family's `-setup` registers standardized UC comments. Ref: [Genie best practices](https://docs.databricks.com/aws/en/genie/best-practices).
-2. **Trusted Assets.** Ship canonical metrics as UC SQL functions (`metric_udfs.sql`) so Genie calls them as governed metrics instead of regenerating ad-hoc SQL. Ref: [Trusted Assets](https://docs.databricks.com/aws/en/genie/trusted-assets).
-3. **Workspace glossary skill.** `-setup` generates a workspace-tier skill mapping customer jargon → physical schema (the value-/concept-level layer UC comments can't capture).
+2. **Metric views + agent metadata — the primary deliverable.** The most common thing customers build on top of a landed source is a **metric view**: a governed semantic layer (canonical measures, decoupled from grouping) that Genie Agents, AI/BI dashboards, and BI tools all consume. A module's canonical measures should ship as a `metric_view.yaml` whenever they're sliceable. The highest-leverage part is the **agent metadata** on each field/measure — `display_name`, `comment`, `format`, and especially `synonyms` (the real-world vocabulary that lets Genie *discover* a measure from natural language). This is the concept-level semantic layer UC comments alone cannot carry. Author the source-specific YAML here; defer creation/registration mechanics to the platform skill [`databricks-metric-views`](https://github.com/databricks-solutions/ai-dev-kit/tree/main/databricks-skills/databricks-metric-views). Refs: [metric views](https://docs.databricks.com/aws/en/business-semantics/metric-views/) · [agent metadata](https://docs.databricks.com/aws/en/business-semantics/agent-metadata) · [YAML reference](https://docs.databricks.com/aws/en/business-semantics/metric-views/yaml-reference) · [advanced techniques](https://docs.databricks.com/aws/en/business-semantics/metric-views/advanced-techniques).
+3. **Trusted Assets.** Ship canonical metrics as UC SQL functions (`metric_udfs.sql`) so Genie calls them as governed, parameterized metrics instead of regenerating ad-hoc SQL. Complementary to metric views — the view is the sliceable surface, the UDF is the callable/parameterized form of the same definition. Ref: [Trusted Assets](https://docs.databricks.com/aws/en/genie/trusted-assets).
+4. **Workspace glossary skill.** `-setup` generates a workspace-tier skill mapping customer jargon → physical schema (the value-/concept-level layer UC comments can't capture).
 
 ### Genie Code conventions
 

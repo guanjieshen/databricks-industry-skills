@@ -82,6 +82,7 @@ Every skill is a folder containing at minimum a `SKILL.md`. Supporting files loa
 ├── examples.sql      ← optional: parameterized gold-standard queries
 ├── views.sql         ← optional: DDL for reusable Gold views
 ├── metric_udfs.sql   ← optional: Trusted Asset UC SQL functions
+├── metric_view.yaml  ← recommended: semantic layer (measures + agent metadata) — the primary deliverable
 └── scripts/          ← optional: automation (Python/bash)
 ```
 
