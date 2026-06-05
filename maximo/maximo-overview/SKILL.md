@@ -1,29 +1,25 @@
 ---
 name: maximo-overview
 description: |
-  Use whenever the user mentions IBM Maximo, MAS (Maximo Application Suite),
-  or any Maximo concept — work orders, WO, WONUM, WORKORDER, assets, ASSETNUM,
-  PMs, JOBPLAN, MBO, plusg* tables, "EAM data". Orients Genie on Maximo's data
-  model, the module map, and universal gotchas that apply across any Maximo
-  query (SITEID composite keys, WOCLASS filtering, ISTASK deduplication,
-  WOSTATUS vs WORKORDER history split). This is the foundation skill loaded
+  Use whenever the user mentions IBM Maximo, Maximo, EAM, CMMS, MAS (Maximo
+  Application Suite), asset management, or maintenance management — work
+  orders (WO, WONUM, WORKORDER), assets (ASSETNUM, asset hierarchy), locations
+  (LOCATIONS), labor (LABTRANS, craft), PMs (preventive maintenance, JOBPLAN),
+  failure analysis, MBO data model, plusg* / plusc* / plust* industry-solution
+  tables. Orients Genie on Maximo's data model, the module map, and the five
+  universal gotchas that apply across any Maximo query (SITEID composite keys,
+  WOCLASS filtering, ISTASK dedup, WOSTATUS-vs-WORKORDER history split,
+  customer-configurable open-status set). This is the foundation skill loaded
   for any Maximo question — other Maximo skills layer on top.
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
 ---
 
 # Maximo Overview
 
-This skill gives you the baseline literacy needed to work with IBM Maximo data in Databricks. Load it whenever a user mentions Maximo, MAS, or any Maximo concept.
+The foundation skill for working with IBM Maximo data in Databricks. Load it whenever the user mentions Maximo, MAS, EAM, CMMS, or any Maximo concept. Other Maximo skills (`maximo-work-orders`, `maximo-reliability`, etc.) layer on top — they set `parent: maximo-overview` so this stays loaded.
 
 You are not a Maximo specialist out of the box. With this skill loaded, you behave like one — you know the module map, the canonical tables, the joins that always go wrong, and how the Oil & Gas industry extensions layer in.
-
-## Genie Code tips (apply to every Maximo question)
-
-- **Auth is ambient in the workspace** — Genie Code is already authenticated to the current workspace, so do **not** pass `--profile` (there's usually no named profile and it would fail). Use `--profile <name>` only when running these skills from a local machine against a `~/.databrickscfg` profile.
-- **Reference tables explicitly** with `@catalog.schema.table` and use **`/findTables`** to locate them — don't guess names.
-- Skills load **only in Agent mode**, and Genie selects them **only by matching their `description`**. If you edit a skill, start a **new chat** for the change to take effect.
-- If `maximo-setup` has not been run in this workspace, business terms and Unity Catalog comments may be missing and answers degrade. Offer to run it.
 
 ## When to use
 
@@ -35,8 +31,9 @@ If the user's question is module-specific (work orders, reliability metrics, int
 
 ## Pre-flight (ask once per session, then cache)
 
-1. **Catalog/schema location**: "Which Unity Catalog catalog/schema holds your Maximo Silver layer?" (e.g. `eam.maximo_silver`)
-2. **Workspace glossary**: Check whether a `<customer>-maximo-glossary` workspace skill is installed. If yes, defer business-jargon resolution to it. If no, suggest running `maximo-setup` for the workspace once — it generates that glossary.
+1. **Catalog/schema location**: "Which Unity Catalog catalog/schema holds your Maximo Silver layer?" (e.g. `eam.maximo_silver`). SQL placeholders use Databricks-native syntax: `:catalog`, `:silver_schema`, `:gold_schema`.
+2. **Workspace glossary**: check whether a `<customer>-maximo-glossary` workspace skill is installed. If yes, defer business-jargon resolution to it.
+3. **`maximo-setup` status**: if not yet run, UC table/column comments and customer-specific conventions (open-status set, MTBF formula, custom worktypes) are missing — Genie quality degrades. Offer to run it. Setup is split-responsibility by design: facts that fit cleanly in a UC column comment live there (Genie reads them directly); the rest live in skill content as a staging ground that can graduate to comments over time.
 
 ## The five universal gotchas (apply to almost every Maximo query)
 
@@ -78,7 +75,7 @@ Tables Genie should know exist, organized by Maximo module:
 - `FAILUREREPORT` — coded failure data on completed WOs
 - `FAILURECODE` — failure taxonomy (tree: PROBLEM → CAUSE → REMEDY)
 
-### Inventory / Purchasing (`maximo-inventory` skill in v3)
+### Inventory / Purchasing
 - `INVENTORY`, `INVBALANCES`, `INVUSE`
 - `PO`, `POLINE`, `INVOICE`, `INVOICELINE`
 - `COMPANIES`
@@ -140,10 +137,46 @@ Other industry-solution prefixes you may see: `PLUSC` (Calibration), `PLUST` (Tr
 - Don't fabricate column names that aren't in this document. If a customer mentions a custom field, ask if it's a standard extension column or something they added.
 - Don't conflate `WORKORDER.STATUS` (current) with `WOSTATUS.STATUS` (history). The #1 source of wrong answers.
 
-## Module pointers (depth lives in module skills)
+## Composes with
 
-- For **labor / craft / crew / qualification / capacity** queries → load [`maximo-labor-resources`](../maximo-labor-resources/). The `LABOR`, `PERSON`, `CRAFT`, `LABORCRAFTRATE`, `QUALIFICATION`, `QUALPERSON`, `CREW`, `CALENDAR`, `WORKPERIOD`, `AVAILREFLY`, `ASSIGNMENT` tables and their gotchas live there.
-- For **hierarchical rollups** (by region / station / area / system / asset class) → load [`maximo-asset-hierarchy`](../maximo-asset-hierarchy/). The `LOCHIERARCHY`, `LOCANCESTOR`, `ASSETANCESTOR`, `SYSTEM`, `CLASSSTRUCTURE` content and closure-table mechanics live there.
+Depth lives in the sibling skills. The overview's job is to route — when the user's question is module-specific, Genie loads the matching skill on top of this one.
+
+### Foundation tier (one-time or cross-cutting)
+
+- [`maximo-setup`](../maximo-setup/) — one-time customer-deployment bootstrap. Profiles the customer's Maximo data, interviews on conventions, generates a workspace-tier `<customer>-maximo-glossary` skill, registers UC comments via a preview-then-apply workflow. Run once per workspace.
+- [`maximo-data-engineering`](../maximo-data-engineering/) — Bronze→Silver/Gold modeling for Maximo. Defers Lakeflow SDP mechanics to the canonical platform skill [`databricks-spark-declarative-pipelines`](https://github.com/databricks-solutions/ai-dev-kit/tree/main/databricks-skills/databricks-spark-declarative-pipelines).
+- [`maximo-data-quality`](../maximo-data-quality/) — "this number looks wrong" diagnostic playbook.
+- [`maximo-workflow-and-approvals`](../maximo-workflow-and-approvals/) — Maximo's workflow engine (WFINSTANCE, WFASSIGNMENT). Cross-cuts every business object that goes through approval (WO, PR, PO, invoice, MoC, incident, ticket).
+
+### Module tier (analytical domains)
+
+- [`maximo-work-orders`](../maximo-work-orders/) — WO operations: backlog, status history, labor analytics, completion, planned vs actual.
+- [`maximo-reliability`](../maximo-reliability/) — reliability metrics (backward-looking): MTBF, MTTR, PM compliance, failure-mode analysis. Ships Trusted UDFs matching IBM's published O&G formulas.
+- [`maximo-pm-planning`](../maximo-pm-planning/) — PM planning (forward-looking): PM forecasting, craft workload, JOBPLAN content, route grouping. Companion to `maximo-reliability`.
+- [`maximo-inventory`](../maximo-inventory/) — INVENTORY, INVBALANCES, ITEM, storeroom analytics: reorder, stockout, ABC, parts availability for WOs.
+- [`maximo-maintenance-cost`](../maximo-maintenance-cost/) — cost rollups by asset / location / period: ACTLABCOST + ACTMATCOST, budget vs actual, PM-vs-CM cost, contractor spend.
+- [`maximo-labor-resources`](../maximo-labor-resources/) — labor masters (LABOR, PERSON, CRAFT, LABORCRAFTRATE), qualifications (QUALIFICATION, QUALPERSON), crews (CREW, CREWLABOR), calendars (CALENDAR, WORKPERIOD), assignments (ASSIGNMENT). Composes with `maximo-pm-planning` for workload-vs-capacity gap analytics.
+- [`maximo-asset-hierarchy`](../maximo-asset-hierarchy/) — closure tables (LOCHIERARCHY, LOCANCESTOR, ASSETANCESTOR), classification trees (CLASSSTRUCTURE), virtual hierarchies (SYSTEM), and rollups by region / station / area / system / asset class. Composes with most module skills for hierarchical analytics.
+- [`maximo-integrity`](../maximo-integrity/) — O&G-heavy: corrosion trending, regulatory inspections (API 510 / 570, B31.4, CSA Z662), RBI scoring, inspection-tied incidents. Requires PLUSG industry-solution tables.
+- [`maximo-hse`](../maximo-hse/) — O&G-heavy: permit-to-work, incidents, investigations, MoC, TRIR/LTIR. Requires PLUSG.
+
+### Genie Agent scaffolder
+
+**Be precise about the Genie products:** *Genie Code* is the agent harness that loads these skills and authors artifacts. *Genie Agents* (formerly *Genie Spaces*) are a curated text-to-SQL data product Genie Code can create on top of UC data. The scaffolder skill below curates the **content**; creation mechanics defer to the platform skill.
+
+- [`maximo-genie-space`](../maximo-genie-space/) — *to be renamed `maximo-genie-agent` post-rebrand.* Curates a Genie Agent on Maximo data: which UC objects to include, semantic descriptions, Trusted UDFs to register, sample questions. Defers Agent creation mechanics to [`databricks-genie`](https://github.com/databricks-solutions/ai-dev-kit/blob/main/databricks-skills/databricks-genie/SKILL.md).
+
+### Platform skills (reference, never duplicate)
+
+When a Maximo module touches platform mechanics, reference the canonical platform skill from [`databricks-solutions/ai-dev-kit/databricks-skills/`](https://github.com/databricks-solutions/ai-dev-kit/tree/main/databricks-skills) rather than re-teaching:
+
+| Need | Platform skill |
+|---|---|
+| Genie Agent creation / management | [`databricks-genie`](https://github.com/databricks-solutions/ai-dev-kit/blob/main/databricks-skills/databricks-genie/SKILL.md) |
+| Lakeflow pipelines (SDP / Auto Loader / AutoCDC) | [`databricks-spark-declarative-pipelines`](https://github.com/databricks-solutions/ai-dev-kit/tree/main/databricks-skills/databricks-spark-declarative-pipelines) |
+| UC mechanics (comments, grants, lineage, tags) | [`databricks-unity-catalog`](https://github.com/databricks-solutions/ai-dev-kit/tree/main/databricks-skills/databricks-unity-catalog) |
+| AI/BI Dashboards on Maximo data | [`databricks-aibi-dashboards`](https://github.com/databricks-solutions/ai-dev-kit/tree/main/databricks-skills/databricks-aibi-dashboards) |
+| Job scheduling for pipelines / refreshes | [`databricks-jobs`](https://github.com/databricks-solutions/ai-dev-kit/tree/main/databricks-skills/databricks-jobs) |
 
 ## References
 
