@@ -1,5 +1,26 @@
 # Maximo Inventory — Gotchas
 
+Domain-specific inventory traps. The universal Maximo mechanics — composite
+`SITEID` keys, status-is-a-synonym-domain / `SYNONYMDOMAIN` resolution,
+`HISTORYFLAG` hiding closed records, and app-server-timezone datetimes — are
+owned by `maximo-overview`; this file applies them to the inventory tables
+rather than re-teaching them.
+
+## Contents
+1. `INVENTORY` vs `INVBALANCES` — master vs current quantity
+2. `AVAILABLE = CURBAL - RESERVEDQTY`
+3. Multi-storeroom inventory — sum across, or filter to one
+4. Costing methods vary per item — don't naively average costs
+5. Issue types — `ISSUETYPE` discriminates `MATUSETRANS` rows
+6. Unit-of-measure conversions are silent
+7. Kit issues (`ITEMSTRUCT`) — don't double-count
+8. Only storeroom locations hold inventory
+9. Status columns are synonym domains (`ITEMSTATUS`, `INVSTATUS`)
+10. Obsolete items still appear in `INVBALANCES`
+11. Rotating items have their own quirks
+12. Reservations & open WOs — apply WO status/HISTORYFLAG correctly
+13. Movement bucketing uses app-server-timezone datetimes
+
 ## 1. `INVENTORY` vs `INVBALANCES` — master vs current quantity
 
 The single most common confusion in inventory analytics.
@@ -16,8 +37,11 @@ SELECT * FROM INVENTORY WHERE itemnum = 'ITEM-X' AND location = 'MAIN-STORE';
 
 -- RIGHT:
 SELECT SUM(curbal) FROM INVBALANCES
-WHERE itemnum = 'ITEM-X' AND location = 'MAIN-STORE';
+WHERE itemnum = 'ITEM-X' AND location = 'MAIN-STORE' AND siteid = 'BEDFORD';
 ```
+
+(`LOCATION` is unique only within `SITEID` — always carry `SITEID` in the
+join/filter. Universal gotcha, see `maximo-overview`.)
 
 ## 2. `AVAILABLE = CURBAL - RESERVEDQTY`
 
@@ -46,7 +70,8 @@ SELECT SUM(curbal) FROM INVBALANCES
 WHERE itemnum = 'ITEM-X' AND location = 'MAIN-WEST';
 ```
 
-Watch for `SITEID` too in multi-site customers.
+Watch for `SITEID` too in multi-site customers — the same `LOCATION` code can
+recur at different sites.
 
 ## 4. Costing methods vary per item — don't naively average costs
 
@@ -70,6 +95,7 @@ SELECT b.itemnum, b.location, SUM(b.curbal) AS qty,
        END AS unit_cost,
        SUM(b.curbal) * (CASE i.costmethod
             WHEN 'STANDARD' THEN c.stdcost
+            WHEN 'LIFO'     THEN c.lastcost
             ELSE                 c.avgcost
        END) AS approx_value
 FROM INVBALANCES b
@@ -77,6 +103,11 @@ JOIN INVENTORY i USING (itemnum, location, siteid)
 JOIN INVCOST   c USING (itemnum, location, siteid)
 GROUP BY b.itemnum, b.location, i.costmethod, c.stdcost, c.avgcost, c.lastcost;
 ```
+
+This is an *approximate physical-carrying* value. Anything beyond it — summing
+across currencies (`INVCOST.CURRENCYCODE` varies by org/site), GL impact, or
+PM-vs-CM material spend — belongs to `maximo-maintenance-cost`; don't sum
+`LINECOST`/cost across currencies here.
 
 ## 5. Issue types — `ISSUETYPE` discriminates `MATUSETRANS` rows
 
@@ -121,10 +152,61 @@ JOIN LOCATIONS l ON l.location = i.location  -- might match too many
                 AND l.type     = 'STOREROOM' -- always include this
 ```
 
-## 9. `ITEM.STATUS = 'OBSOLETE'` items can still appear in `INVBALANCES`
+## 9. Status columns are synonym domains (`ITEMSTATUS`, `INVSTATUS`)
 
-Obsolete items aren't issued (Maximo blocks new transactions) but historical balances and consumption history remain. For "active inventory" reports, filter on `ITEM.STATUS = 'ACTIVE'`. For historical movements, don't filter — include obsolete.
+`ITEM.STATUS` (domain `ITEMSTATUS`) and `INVENTORY.STATUS` (domain `INVSTATUS`)
+store the customer-renamable **synonym** `VALUE`, not the internal `MAXVALUE`
+that Maximo logic keys on. In a stock deployment internal == external so a
+literal `STATUS = 'ACTIVE'` works — but once a customer adds synonyms, literals
+silently drop rows. Resolve the set via `SYNONYMDOMAIN`:
 
-## 10. Rotating items have their own quirks
+```sql
+-- "Active" inventory, synonym-safe
+WHERE inv.status IN (
+    SELECT value FROM SYNONYMDOMAIN
+    WHERE domainid = 'INVSTATUS' AND maxvalue = 'ACTIVE'
+)
+```
+
+This is the universal status mechanic owned by `maximo-overview` — applied here
+to the inventory domains. The example/view literals (`'ACTIVE'`) are correct for
+stock deployments; switch to the `SYNONYMDOMAIN` form when synonyms exist.
+
+## 10. Obsolete items still appear in `INVBALANCES`
+
+Obsolete items (`ITEM.STATUS` at the `OBSOLETE` synonym) aren't issued (Maximo
+blocks new transactions) but historical balances and consumption history remain.
+For "active inventory" reports, filter to the `ACTIVE` synonym (see gotcha 9).
+For historical movement reports, don't filter — include obsolete items so trends
+aren't truncated.
+
+## 11. Rotating items have their own quirks
 
 Items with `ROTATING = 1` (pumps, motors, etc.) are tracked individually by serial number. `INVBALANCES` has rows per condition (`NEW`, `REPAIRED`, `IN-SERVICE`). For "spares available", filter `CONDITIONCODE IN ('NEW', 'REPAIRED')` and exclude `IN-SERVICE` (already on an asset, not in the storeroom).
+
+## 12. Reservations & open WOs — apply WO status/HISTORYFLAG correctly
+
+`INVRESERVE` (and the `RESERVEDQTY` it aggregates into `INVBALANCES`) commits
+stock to future WOs. When you join `INVRESERVE.WONUM` / `MATUSETRANS.WONUM` back
+to `WORKORDER` to scope "open" reservations:
+
+- `WORKORDER.STATUS` is the `WOSTATUS` synonym domain — resolve "still open"
+  (i.e. not `COMP`/`CLOSE`/`CAN`) via `SYNONYMDOMAIN`, not literals (gotcha 9
+  pattern; status set owned by `maximo-work-orders` / `maximo-overview`).
+- Closed/cancelled WOs carry `HISTORYFLAG = 1` and drop out of standard Maximo
+  views — if the silver pipeline mirrors that filter, a reservation against a
+  just-closed WO may look orphaned. Confirm closed WOs are present before
+  treating an old reservation as a live backlog. (Universal `HISTORYFLAG`
+  mechanic, see `maximo-overview`.)
+
+Reservations are normally released when the WO reaches `CLOSE` (not merely
+`COMP`), so a `COMP`-but-not-`CLOSE` WO can still hold reservations — relevant
+when a shop defers closing.
+
+## 13. Movement bucketing uses app-server-timezone datetimes
+
+`MATUSETRANS.TRANSDATE` / `MATRECTRANS.TRANSDATE` are stored in the app server's
+local timezone (often UTC, but that is a config choice — not guaranteed), not
+per-row UTC. When bucketing usage by day/week/month across sites, don't assume
+UTC. This is the universal datetime mechanic owned by `maximo-overview`; confirm
+the deployment's app-server timezone via `maximo-setup`.

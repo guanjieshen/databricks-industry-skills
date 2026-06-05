@@ -13,8 +13,13 @@
 - Issue 9 — PM generation health (compliance dropped suddenly)
 - Issue 10 — Custom column unexpectedly NULL
 - Quick triage tree
+- Issue 11 — LABTRANS orphans against LABOR (composes with maximo-labor-resources)
+- Issue 12 — LOCANCESTOR staleness (composes with maximo-asset-hierarchy)
+- Issue 13 — Qualifications still ACTIVE past EXPIRYDATE (composes with maximo-labor-resources)
 
 Each entry maps to a `diagnostics.sql` probe. After running the probe, use this guide to interpret findings and recommend remediation.
+
+> Universal mechanics (SITEID, WOCLASS, ISTASK, SYNONYMDOMAIN status resolution, HISTORYFLAG, app-server-timezone) are owned by `maximo-overview`. This file applies them; it does not re-teach them.
 
 ---
 
@@ -26,6 +31,10 @@ Each entry maps to a `diagnostics.sql` probe. After running the probe, use this 
 - Many `WORKORDER` rows have zero corresponding `WOSTATUS` rows
 - Latest `WOSTATUS.STATUS` doesn't match `WORKORDER.STATUS`
 - Status-transition queries return suspiciously few rows
+
+**Rule out first (not data defects)**:
+- **Synonym mismatch**: `WORKORDER.STATUS` and `WOSTATUS.STATUS` store the customer-renamable synonym (`SYNONYMDOMAIN.VALUE`), not the internal `MAXVALUE`. A "mismatch" can be two synonyms of the same internal value — resolve both via `SYNONYMDOMAIN` (`DOMAINID='WOSTATUS'`) before calling it a defect. (Owned by `maximo-overview`.)
+- **HISTORYFLAG**: closed WOs (`HISTORYFLAG=1`) drop out of standard List views, so a WO that "lost" its history in a List-derived feed may simply be in history. Count with and without `HISTORYFLAG=0`. (Owned by `maximo-overview`.)
 
 **Root causes**:
 1. **REST-API ingestion bug**: Maximo's REST PATCH endpoints can update `WORKORDER.STATUS` directly without writing to `WOSTATUS`. Confirmed by [IBM APAR IJ17261](https://www.ibm.com/support/pages/apar/IJ17261). Most common cause.
@@ -124,14 +133,16 @@ Each entry maps to a `diagnostics.sql` probe. After running the probe, use this 
 
 **Probe**: `Probe 8 — Date sanity`
 
-**Root causes**:
-- Timezone mismatch in ingestion (UTC vs site local)
+**Rule out first**: Maximo datetimes are stored in the **app-server timezone** (often UTC, but that is a config choice — not guaranteed) and displayed in the user-profile TZ. A "wrong" date is frequently a TZ-display difference, not corruption. Confirm the deployment's app-server TZ (a `maximo-setup` interview fact) before flagging rows. (Mechanic owned by `maximo-overview`.)
+
+**Root causes** (genuine defects, after ruling out TZ):
 - Manual data correction that updated `ACTFINISH` without checking `REPORTDATE`
-- Time-travel bug — `REPORTDATE` in the future is usually clock drift on the ingestion side
+- Clock drift on the ingestion side — `REPORTDATE` in the future is usually ingestion clock drift
+- `LABTRANS` / failure rows appended via Edit History on a closed WO can legitimately postdate `ACTFINISH`/close — that's expected, not a defect
 
 **Remediation**:
-- Standardize on UTC at Silver layer
-- Filter out implausible rows or flag them
+- Do NOT blindly rewrite to UTC — first confirm the app-server TZ so conversions are correct (defer the actual TZ to `maximo-setup`).
+- Filter out implausible rows or flag them; bucket by day/week/month only after the TZ is known.
 
 ---
 

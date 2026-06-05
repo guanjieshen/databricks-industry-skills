@@ -1,6 +1,16 @@
 # Maximo Maintenance Cost — Schema Reference
 
-For the universal Maximo schema (WORKORDER, ASSET, LOCATIONS), see `maximo-overview`. This skill focuses on the columns and tables that contribute to maintenance cost analytics.
+For the universal Maximo schema (WORKORDER, ASSET, LOCATIONS) and all universal mechanics (SITEID composite keys, status-as-synonym-domain, HISTORYFLAG, app-server-timezone datetimes, WOCLASS, ISTASK), see `maximo-overview`. This skill focuses on the columns and tables that contribute to maintenance cost analytics.
+
+## Contents
+- `WORKORDER` cost columns (header-level)
+- `LABTRANS` — labor transactions
+- `MATUSETRANS` — material transactions (cost side)
+- `WPLABOR` / `WPMATERIAL` — planned (estimate) lines
+- `COSTHIST` — per-WO cost history (where enabled)
+- `COMPANIES` — vendor / contractor master
+- `LABOR` — labor master (referenced only)
+- Cardinality summary
 
 ## `WORKORDER` cost columns (header-level)
 
@@ -10,20 +20,25 @@ For the universal Maximo schema (WORKORDER, ASSET, LOCATIONS), see `maximo-overv
 | `ESTMATCOST` | DECIMAL | Estimated material cost (from WPMATERIAL rollup) |
 | `ESTSERVCOST` | DECIMAL | Estimated contracted-service cost |
 | `ESTTOOLCOST` | DECIMAL | Estimated tool cost |
-| `ACTLABCOST` | DECIMAL | Actual labor cost (rolls up LABTRANS at WO close) |
-| `ACTMATCOST` | DECIMAL | Actual material cost (rolls up MATUSETRANS at WO close) |
+| `ACTLABCOST` | DECIMAL | Actual labor cost posted to THIS record as LABTRANS rows are entered. Per-record — does NOT auto-roll-up to the parent WO (ledger F6). Can be re-settled by post-close Edit-History appends; reconcile against `SUM(LABTRANS.LINECOST)`. |
+| `ACTMATCOST` | DECIMAL | Actual material cost posted to THIS record as MATUSETRANS rows are entered. Per-record — no auto-rollup to parent. |
 | `ACTSERVCOST` | DECIMAL | Actual contracted-service cost |
 | `ACTTOOLCOST` | DECIMAL | Actual tool cost |
-| `WOCURRENCY` | STRING | Currency code — may vary across sites |
-| `CHARGEACCT` | STRING | GL charge account (customer-specific format) |
-| `WORKTYPE` | STRING | Customer-configured business categorization (`CM`, `PM`, `EM`, `PROJ`, etc.) |
-| `PMNUM` | STRING | NULL for non-PM WOs; populated for PM-generated WOs |
+| `ACTTOTALCOST` | DECIMAL | **NON-PERSISTENT (computed)** — sum of the actual cost fields. May be ABSENT in silver (it is not a stored column in stock Maximo). Never depend on it; compute the total from the persisted fields instead (ledger F6, IBM APAR IV13319). |
+| `WOCURRENCY` | STRING | Currency code — may vary across sites (ledger F12). Pair with `EXCHANGERATE`. |
+| `EXCHANGERATE` | DECIMAL | Exchange rate to base currency at the time costs were captured. |
+| `CHARGEACCT` | STRING | GL charge account (customer-specific format; GL integration is out of scope here) |
+| `WORKTYPE` | STRING | Customer-configured business categorization (`CM`, `PM`, `EM`, `PROJ`, etc.) — business intent, NOT the PM-generated source flag |
+| `PMNUM` | STRING | NULL for non-PM WOs; populated for PM-generated WOs (the source flag) |
 
-**Best practice for "total cost on a WO"**:
+**Best practice for "total cost on a WO"** — compute from persisted fields; do NOT
+read `ACTTOTALCOST` (non-persistent, may be missing):
 ```sql
 COALESCE(actlabcost, 0) + COALESCE(actmatcost, 0)
   + COALESCE(actservcost, 0) + COALESCE(acttoolcost, 0) AS total_actual_cost
 ```
+This is HEADER cost for THIS WO only. For a WO tree, recurse the hierarchy or
+aggregate the transaction tables — header costs do not roll up (see gotchas #2).
 
 ## `LABTRANS` — labor transactions
 
@@ -41,7 +56,7 @@ Granular labor cost source. Each row is one craft-hour booked.
 | `LINECOST` | Total cost of this transaction (`regularhrs × payrate + premiumpayhours × premiumpayrate`) |
 | `TRANSTYPE` | `WORK`, `TRAVEL` |
 
-For granular cost analytics, sum `LABTRANS.LINECOST` rather than relying on `WORKORDER.ACTLABCOST`. The header value can settle post-close-adjustments.
+For granular cost analytics, sum `LABTRANS.LINECOST` rather than relying on `WORKORDER.ACTLABCOST`. Actual labor can be appended to a CLOSED WO via Edit History (ledger F13), so `LABTRANS` rows can postdate `ACTFINISH`/close — `LABTRANS` reflects this, the header may not re-settle. Attribute spend by `LABTRANS.STARTDATE` (app-server timezone — see overview F4), not by close date, for true period consumption.
 
 ## `MATUSETRANS` — material transactions (cost side)
 
@@ -90,9 +105,9 @@ Used for "contractor spend" analytics.
 | `LIMIT` | Spending limit per-PO |
 
 To compute contractor spend:
-- Find `LABTRANS` rows where `LABORCODE` references a contractor (typically `LABOR.TYPE = 'C'` or similar customer convention)
+- Find `LABTRANS` rows where `LABORCODE` references a contractor — identification is customer-specific (`LABOR.VENDOR IS NOT NULL`, or a `LABOR.LABORTYPE` value); confirm via the workspace glossary (see gotchas #6)
 - Sum `LABTRANS.LINECOST`
-- Or join via `WORKORDER.VENDOR` for service-contract work
+- Or join via `WORKORDER.VENDOR` for service-contract work booked as `ACTSERVCOST`
 
 ## `LABOR` — labor master (referenced only)
 

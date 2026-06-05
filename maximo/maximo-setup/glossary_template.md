@@ -2,6 +2,9 @@
 
 The generated workspace skill follows this shape. `generate_glossary.py` substitutes `{{...}}` placeholders from the interview answers.
 
+## Contents
+The fenced template below renders to a glossary skill with: frontmatter (`name`, `description`, `metadata.version`, `parent: maximo-overview` — no `tags:`/`owners:`), Industry & Maximo usage (incl. app-server timezone + migration cutover), Sites, Asset / location hierarchy, Asset classes, Criticality conventions, Status conventions, Work-type codes, Custom columns, Custom tables, Regulatory codes, Tribal knowledge, Needs-confirmation follow-up table, and How to use.
+
 ```markdown
 ---
 name: {{customer}}-maximo-glossary
@@ -32,6 +35,8 @@ industry isn't O&G / no `plusg*` tables.
 - **Handled outside Maximo** → {{modules_elsewhere}}
 - **Maintenance maturity** → {{maintenance_maturity}}
 - **KPIs tracked** → {{kpis}}
+- **App-server timezone** → {{app_server_timezone}} (Maximo stores datetimes in this TZ — see maximo-overview datetime gotcha; bucket day/week/month accordingly)
+- **Migration cutover** → {{migration_cutover}} (exclude pre-cutover WOs from trend metrics if history is null)
 
 ## Sites
 

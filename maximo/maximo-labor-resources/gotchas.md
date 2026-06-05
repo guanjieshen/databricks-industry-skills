@@ -12,8 +12,11 @@
 - 8. Person-group nesting can loop
 - 9. Employee + contractor blends in the same crew
 - 10. `AVAILREFLY` doesn't always sync with `WORKPERIOD`
+- 11. Status columns are synonym domains (defer to overview)
 
-The first 5 are also inline in `SKILL.md`. Reproduced here in full with the additional gotchas (6-10) for queries that go deeper.
+The first 5 are also inline in `SKILL.md`. Reproduced here in full with the additional gotchas (6-11) for queries that go deeper.
+
+> **Universal mechanics live in `maximo-overview`** — don't re-derive them here. This skill's SQL must still APPLY them: `SITEID` in every cross-table join (overview gotcha 4), `SYNONYMDOMAIN` resolution for status sets (gotcha 5), `HISTORYFLAG = 0` awareness when joining to `WORKORDER`/`TICKET` (gotcha 6), and app-server-timezone datetimes when bucketing `WORKPERIOD`/`AVAILREFLY` by day/week across sites (gotcha 7).
 
 ## 1. `LABOR` ≠ `PERSON`
 
@@ -164,3 +167,18 @@ true_available = workperiod_hours - sum_of_overlapping_availrefly_hours
 ```
 
 The shipped `vacation_impact_hours` UDF does this for a single labor over a window. Disclose to the user if `AVAILREFLY` is sparse in their data.
+
+Also note `WORKPERIOD.STARTDATE/ENDDATE` and `AVAILREFLY.STARTDATETIME/ENDDATETIME` are stored in the app-server timezone, not per-row UTC (overview gotcha 7). When you bucket capacity or absences by week across multiple sites, confirm the deployment's app-server TZ (a `maximo-setup` fact) — don't assume UTC.
+
+## 11. Status columns are synonym domains (defer to overview)
+
+`LABOR.STATUS`, `ASSIGNMENT.STATUS`, `QUALPERSON.STATUS`, `QUALIFICATION.STATUS`, `CREW.STATUS`, and the `WORKORDER.STATUS` you join to all store the customer-renamable synonym (`SYNONYMDOMAIN.VALUE`), **not** the internal `MAXVALUE`. In stock Maximo internal==external so literals like `STATUS = 'ACTIVE'` work — but if the deployment added synonyms, a literal filter silently misses records. Resolve the set via `SYNONYMDOMAIN` exactly as overview gotcha 5 prescribes (labor-side domains include `LABORSTATUS`, `WOSTATUS` for the joined WO, and the assignment-status domain configured in this deployment):
+
+```sql
+WHERE l.status IN (
+    SELECT value FROM :catalog.:silver_schema.synonymdomain
+    WHERE domainid = 'LABORSTATUS' AND maxvalue = 'ACTIVE'
+)
+```
+
+This is a universal mechanic owned by `maximo-overview` — applied here, not re-taught.

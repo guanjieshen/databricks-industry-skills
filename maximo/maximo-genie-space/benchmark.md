@@ -15,9 +15,12 @@ customer's own real questions (especially ones from the Monitoring tab) over tim
 ## How to score
 
 For each question, the answer **passes** only if it: uses the right table(s),
-applies the universal gotchas (WOCLASS, ISTASK, SITEID, WOSTATUS-vs-WORKORDER),
-resolves the customer's business terms via the glossary, and returns the number a
-Maximo SME would accept. A confident wrong answer is the worst outcome — log it.
+applies the universal gotchas (`WOCLASS='WORKORDER'`, `ISTASK=0`, `SITEID` joins,
+status resolved via `SYNONYMDOMAIN`, `HISTORYFLAG` awareness,
+`STATUS`-current-vs-`WOSTATUS`-history), resolves the customer's business terms
+via the glossary, and returns the number a Maximo SME would accept. A confident
+wrong answer is the worst outcome — log it. (See `maximo-overview` for what each
+mechanic means.)
 
 | Score | Meaning |
 |---|---|
@@ -47,5 +50,6 @@ Maximo SME would accept. A confident wrong answer is the worst outcome — log i
 ## Cross-cutting / traps (these catch the common failures)
 - "How many work orders do we have?" → must scope to `WOCLASS='WORKORDER'`, `ISTASK=0` (not tasks/PMs).
 - "Total labor on WO 12345." → actuals (LABTRANS), not planned (WPLABOR).
-- "Status of WO 12345 over time." → WOSTATUS history, not WORKORDER.STATUS.
+- "Status of WO 12345 over time." → `WOSTATUS` history, not `WORKORDER.STATUS` (current).
+- "Show only open work orders." → status resolved via `SYNONYMDOMAIN` (customer synonyms), not hard-coded literals; closed rows may be hidden by `HISTORYFLAG=1`.
 - A question using a customer term not in the glossary → Genie should ask, not guess.

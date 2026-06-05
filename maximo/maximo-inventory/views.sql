@@ -1,7 +1,11 @@
 -- =============================================================================
 -- Maximo Inventory — Gold Views
 -- =============================================================================
--- Substitute {{catalog}}.{{silver_schema}} and {{catalog}}.{{gold_schema}}.
+-- Bind :catalog, :silver_schema, :gold_schema (Databricks SQL parameters) to the
+-- customer's UC catalog and schemas at registration time. Register once via
+-- maximo-setup (preview-then-apply); do not run from the skill.
+-- STATUS literals (e.g. 'ACTIVE') are correct for stock deployments; switch to
+-- the SYNONYMDOMAIN form (gotcha 9) when the customer has added status synonyms.
 -- =============================================================================
 
 
@@ -11,7 +15,7 @@
 -- joins INVENTORY for reorder rules and ABC class, joins ITEM for description,
 -- joins INVCOST for unit cost, computes available + days-since-last-movement.
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE VIEW {{catalog}}.{{gold_schema}}.v_inventory_position
+CREATE OR REPLACE VIEW :catalog.:gold_schema.v_inventory_position
 COMMENT 'Per-(item, storeroom) inventory position. One row per INVENTORY master. Reorder status, available qty (net of reservations), days-since-last-movement.'
 AS
 WITH balances AS (
@@ -20,7 +24,7 @@ WITH balances AS (
         SUM(curbal)                                       AS on_hand,
         SUM(reservedqty)                                  AS reserved,
         SUM(curbal) - SUM(reservedqty)                    AS available
-    FROM {{catalog}}.{{silver_schema}}.invbalances
+    FROM :catalog.:silver_schema.invbalances
     GROUP BY itemnum, location, siteid
 )
 SELECT
@@ -56,14 +60,14 @@ SELECT
         WHEN COALESCE(b.available, 0) >= inv.maxlevel     THEN 'AT_MAX'
         ELSE 'OK'
     END                                                    AS stock_status
-FROM {{catalog}}.{{silver_schema}}.inventory inv
-JOIN {{catalog}}.{{silver_schema}}.item i
+FROM :catalog.:silver_schema.inventory inv
+JOIN :catalog.:silver_schema.item i
     ON i.itemnum = inv.itemnum AND i.itemsetid = inv.itemsetid
 LEFT JOIN balances b
     ON b.itemnum = inv.itemnum
    AND b.location = inv.location
    AND b.siteid   = inv.siteid
-LEFT JOIN {{catalog}}.{{silver_schema}}.invcost c
+LEFT JOIN :catalog.:silver_schema.invcost c
     ON c.itemnum = inv.itemnum
    AND c.location = inv.location
    AND c.siteid   = inv.siteid;
@@ -74,7 +78,7 @@ LEFT JOIN {{catalog}}.{{silver_schema}}.invcost c
 -- MATUSETRANS aggregated to (item, storeroom, week) grain for trending analytics.
 -- Nets ISSUE + RETURN; excludes TRANSFER and ADJUSTMENT.
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE VIEW {{catalog}}.{{gold_schema}}.v_stock_movement
+CREATE OR REPLACE VIEW :catalog.:gold_schema.v_stock_movement
 COMMENT 'Net consumption per (item, storeroom, week). ISSUE - RETURN. Excludes TRANSFER and ADJUSTMENT.'
 AS
 SELECT
@@ -87,7 +91,7 @@ SELECT
     SUM(CASE WHEN issuetype = 'ISSUE'  THEN linecost ELSE 0 END)
       - SUM(CASE WHEN issuetype = 'RETURN' THEN linecost ELSE 0 END) AS net_cost,
     COUNT(DISTINCT wonum)                                 AS distinct_wos
-FROM {{catalog}}.{{silver_schema}}.matusetrans
+FROM :catalog.:silver_schema.matusetrans
 WHERE issuetype IN ('ISSUE', 'RETURN')
 GROUP BY itemnum, location, siteid, date_trunc('WEEK', transdate);
 
@@ -97,7 +101,7 @@ GROUP BY itemnum, location, siteid, date_trunc('WEEK', transdate);
 -- Items currently below reorder point with suggested order quantity.
 -- One row per (item, storeroom) needing replenishment.
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE VIEW {{catalog}}.{{gold_schema}}.v_reorder_alerts
+CREATE OR REPLACE VIEW :catalog.:gold_schema.v_reorder_alerts
 COMMENT 'Items currently below reorder point. One row per (item, storeroom) needing replenishment.'
 AS
 SELECT
@@ -111,7 +115,7 @@ SELECT
     p.default_vendor,
     p.abc_class,
     p.stock_status
-FROM {{catalog}}.{{gold_schema}}.v_inventory_position p
+FROM :catalog.:gold_schema.v_inventory_position p
 WHERE p.stock_status IN ('BELOW_REORDER', 'AT_MIN')
   AND p.item_status = 'ACTIVE'
   AND p.inventory_status = 'ACTIVE';

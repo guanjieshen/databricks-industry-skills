@@ -1,0 +1,12 @@
+{
+  "query": "are we over-scheduled on PMs?",
+  "expected_skill": "maximo-pm-planning",
+  "expected_behavior": [
+    "Loads maximo-pm-planning and maximo-overview as parent",
+    "Surfaces clarifying questions BEFORE answering — at minimum the forecast horizon (next 30/60/90 days or a quarter) and the on-time tolerance convention (SMRP 10%, fixed days, or customer-specific)",
+    "Checks whether CALENDAR / WORKPERIOD capacity tables are populated before claiming a capacity gap; if sparse, says the over-scheduled math is unreliable rather than reporting a false gap",
+    "Does NOT silently pick a horizon and return a single over/under verdict",
+    "For the workload-vs-capacity comparison, composes maximo-labor-resources for crew capacity (does not re-derive the capacity master here)",
+    "Sums forecast workload via v_pm_workload_by_craft / pm_workload_hours, expanding PMSEQUENCE and using COALESCE(EXTDATE, NEXTDATE)"
+  ]
+}

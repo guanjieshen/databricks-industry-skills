@@ -2,6 +2,9 @@
 
 This is what `generate_glossary.py` produces from a completed interview. Use as a reference for what "good" looks like.
 
+## Contents
+The fenced block below is a complete sample glossary skill: frontmatter (no `tags:`/`owners:`), then Sites, Asset / location hierarchy, Asset classes, Criticality conventions, Status conventions, Work-type codes, Custom columns, Custom tables, Regulatory codes, Tribal knowledge, and How to use.
+
 ---
 
 ```markdown
@@ -12,10 +15,9 @@ description: |
   Energy. Use whenever a Maximo-related question uses Northstar terms (Mainline,
   Field, Station, asset classes, custom KM column, etc.). Compose with the
   maximo-* enterprise skills.
-tags:
-  - data-source:ibm-maximo
-  - tier:workspace
-  - customer:northstar
+metadata:
+  version: "0.1.0"
+parent: maximo-overview
 ---
 
 # Northstar Energy — Maximo Business Glossary

@@ -2,6 +2,11 @@
 
 For the universal Maximo schema (WORKORDER, ASSET, LOCATIONS), see `maximo-overview/SKILL.md`. This skill focuses on tables specific to reliability metrics.
 
+## Contents
+
+- Tables used by reliability metrics
+- Cardinality summary (reliability-specific)
+
 ## Tables used by reliability metrics
 
 ### `WORKORDER` (filtered to failure events)

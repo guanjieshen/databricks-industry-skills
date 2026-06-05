@@ -1,6 +1,21 @@
 # Maximo Inventory — Schema Reference
 
-For the universal Maximo schema, see `maximo-overview`. This skill focuses on the inventory module's tables and joins.
+For the universal Maximo schema and mechanics (composite `SITEID` keys,
+status-is-a-synonym-domain / `SYNONYMDOMAIN`, `HISTORYFLAG`, app-server-timezone
+datetimes), see `maximo-overview`. This file focuses on the inventory module's
+tables and joins.
+
+## Contents
+- `ITEM` — global item master
+- `INVENTORY` — per-(item, storeroom) master record
+- `INVBALANCES` — current quantities per bin/lot
+- `INVCOST` — cost data per (item, storeroom)
+- `MATUSETRANS` — material usage transactions
+- `MATRECTRANS` — material receipt transactions
+- `INVRESERVE` — current reservations
+- `ITEMSTRUCT` — item assembly structure
+- `LOCATIONS` (filtered to storerooms)
+- Cardinality summary
 
 ## `ITEM` — global item master
 
@@ -12,7 +27,7 @@ One row per distinct item code, regardless of where stocked. The catalog.
 | `ITEMSETID` | Item-set identifier — items belong to item sets that span sites |
 | `DESCRIPTION` | Item description |
 | `COMMODITY` / `COMMODITYGROUP` | Item categorization (often used for ABC analysis) |
-| `STATUS` | `ACTIVE`, `PENDING`, `OBSOLETE` — only `ACTIVE` items can be issued |
+| `STATUS` | Synonym domain `ITEMSTATUS` (`ACTIVE`, `PENDING`, `OBSOLETE`) — stores the renamable synonym `VALUE`; resolve via `SYNONYMDOMAIN`. Only `ACTIVE` items can be issued |
 | `ITEMTYPE` | `ITEM`, `SERVICE`, `TOOL`, `STDSERVICE` |
 | `ROTATING` | `1` if the item is rotating (tracked by serial number with maintenance history) |
 | `STOCKEDITEM` | `1` if stocked in inventory; `0` for direct-buy items |
@@ -36,7 +51,7 @@ One row per (`ITEMNUM`, `LOCATION`, `SITEID`). Holds reorder rules and ABC class
 | `LEADTIME` | Days to receive after order |
 | `ABCTYPE` | ABC classification (`A`, `B`, `C`) — customer-defined; usually cost × velocity ranking |
 | `COSTMETHOD` | `AVERAGE`, `FIFO`, `LIFO`, `STANDARD` — customer-configured per item |
-| `STATUS` | `ACTIVE`, `INACTIVE`, `OBSOLETE`, `PLANNING` |
+| `STATUS` | Synonym domain `INVSTATUS` (`ACTIVE`, `INACTIVE`, `OBSOLETE`, `PLANNING`) — stores the renamable synonym `VALUE`; resolve via `SYNONYMDOMAIN` |
 | `VENDOR` | Default supplier (FK to COMPANIES) |
 | `LASTISSUEDATE` | Most recent issue (denormalized for dead-stock queries) |
 
@@ -68,7 +83,7 @@ Derived: **`AVAILABLE = CURBAL - RESERVEDQTY`**. Always subtract reservations fo
 | `AVGCOST` | Maximo-computed rolling average cost |
 | `LASTCOST` | Cost of most recent receipt |
 | `STDCOST` | Standard cost (if using STANDARD costing method) |
-| `CURRENCYCODE` | Currency — be careful aggregating across currencies |
+| `CURRENCYCODE` | Currency — summing value across differing currencies is meaningless; defer multi-currency normalization to `maximo-maintenance-cost` |
 
 ## `MATUSETRANS` — material usage transactions
 
@@ -84,7 +99,7 @@ Append-only log of every material movement (issue, transfer, return, adjustment)
 | `QUANTITY` | Quantity moved (negative for adjustments-down or returns) |
 | `LINECOST` | Cost of this transaction at the time it happened |
 | `ISSUETYPE` | `ISSUE`, `TRANSFER`, `RETURN`, `ADJUSTMENT` |
-| `TRANSDATE` | When the transaction happened |
+| `TRANSDATE` | When the transaction happened — app-server-timezone, not per-row UTC (see `maximo-overview`); don't assume UTC when bucketing across sites |
 | `CONDITIONCODE` | For rotating items |
 | `TOSTOREROOM` / `TOSITEID` | For `TRANSFER` — destination storeroom |
 
