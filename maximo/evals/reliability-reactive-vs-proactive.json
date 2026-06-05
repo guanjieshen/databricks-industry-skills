@@ -1,0 +1,10 @@
+{
+  "query": "what's our reactive vs proactive maintenance ratio?",
+  "expected_skill": "maximo-reliability",
+  "expected_behavior": [
+    "Loads maximo-reliability",
+    "Computes the ratio on LABOR HOURS (LABTRANS), not on WO counts (SMRP semantics)",
+    "Does NOT equate WORKTYPE='CM' with reactive — recognizes corrective work found pre-failure from PM/PdM is proactive",
+    "Surfaces that the reactive/proactive classification rule and any planned-flag are customer-specific (asks rather than fabricating a clean split)"
+  ]
+}

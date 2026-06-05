@@ -1,10 +1,10 @@
 -- =============================================================================
 -- Maximo Labor & Resources — UC SQL Function (Trusted UDF) DDL
 -- =============================================================================
--- Substitute {{catalog}}.{{silver_schema}} and {{catalog}}.{{metrics_schema}}.
+-- Substitute :catalog.:silver_schema and :catalog.:metrics_schema.
 -- =============================================================================
 
-CREATE SCHEMA IF NOT EXISTS {{catalog}}.{{metrics_schema}}
+CREATE SCHEMA IF NOT EXISTS :catalog.:metrics_schema
 COMMENT 'Trusted-asset SQL functions for Maximo labor + capacity metrics';
 
 
@@ -15,7 +15,7 @@ COMMENT 'Trusted-asset SQL functions for Maximo labor + capacity metrics';
 -- absences (AVAILREFLY) overlapping the week. Returns 0 if WORKPERIOD coverage
 -- is missing for the week — caller should probe coverage separately.
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION {{catalog}}.{{metrics_schema}}.crew_capacity_hours(
+CREATE OR REPLACE FUNCTION :catalog.:metrics_schema.crew_capacity_hours(
     crew_id STRING,
     org_id STRING,
     week_start TIMESTAMP,
@@ -26,7 +26,7 @@ COMMENT 'Trusted metric: available crew-hours in a week, net of planned absences
 RETURN (
     WITH current_members AS (
         SELECT cl.laborcode, cl.orgid
-        FROM {{catalog}}.{{silver_schema}}.crewlabor cl
+        FROM :catalog.:silver_schema.crewlabor cl
         WHERE cl.crewid = crew_id AND cl.orgid = org_id
           AND cl.startdate <= week_start
           AND (cl.enddate IS NULL OR cl.enddate > week_start)
@@ -34,8 +34,8 @@ RETURN (
     scheduled AS (
         SELECT SUM(wp.hours) AS hours
         FROM current_members cm
-        JOIN {{catalog}}.{{silver_schema}}.labor l USING (laborcode, orgid)
-        JOIN {{catalog}}.{{silver_schema}}.workperiod wp
+        JOIN :catalog.:silver_schema.labor l USING (laborcode, orgid)
+        JOIN :catalog.:silver_schema.workperiod wp
             ON wp.calnum = l.calnum AND wp.shiftnum = l.shiftnum
            AND wp.periodtype = 'WORK'
            AND wp.startdate >= week_start
@@ -45,8 +45,8 @@ RETURN (
     absent AS (
         SELECT SUM(ar.hours) AS hours
         FROM current_members cm
-        JOIN {{catalog}}.{{silver_schema}}.labor l USING (laborcode, orgid)
-        JOIN {{catalog}}.{{silver_schema}}.availrefly ar
+        JOIN :catalog.:silver_schema.labor l USING (laborcode, orgid)
+        JOIN :catalog.:silver_schema.availrefly ar
             ON ar.laborcode = cm.laborcode AND ar.orgid = cm.orgid
            AND ar.startdatetime >= week_start
            AND ar.startdatetime <  week_start + INTERVAL 7 DAYS
@@ -62,7 +62,7 @@ RETURN (
 -- -----------------------------------------------------------------------------
 -- For "how many people are qualified for X" — filters out expired certs.
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION {{catalog}}.{{metrics_schema}}.qualified_labor_count(
+CREATE OR REPLACE FUNCTION :catalog.:metrics_schema.qualified_labor_count(
     qualification_id STRING,
     org_id STRING COMMENT 'ORGID. NULL for all orgs.'
 )
@@ -70,8 +70,8 @@ RETURNS BIGINT
 COMMENT 'Trusted metric: distinct ACTIVE labor records with a current (non-expired) qualification of the given type.'
 RETURN (
     SELECT COUNT(DISTINCT l.laborcode)
-    FROM {{catalog}}.{{silver_schema}}.qualperson qp
-    JOIN {{catalog}}.{{silver_schema}}.labor l
+    FROM :catalog.:silver_schema.qualperson qp
+    JOIN :catalog.:silver_schema.labor l
         ON l.personid = qp.personid AND l.status = 'ACTIVE'
     WHERE qp.qualificationid = qualification_id
       AND qp.status = 'ACTIVE'
@@ -86,7 +86,7 @@ RETURN (
 -- "How much of a person's scheduled time was booked to WOs in a window."
 -- 100% = fully booked. >100% = booked overtime beyond schedule.
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION {{catalog}}.{{metrics_schema}}.labor_utilization_pct(
+CREATE OR REPLACE FUNCTION :catalog.:metrics_schema.labor_utilization_pct(
     labor_code STRING,
     org_id STRING,
     window_start TIMESTAMP,
@@ -97,8 +97,8 @@ COMMENT 'Trusted metric: % of scheduled WORKPERIOD hours that were booked as LAB
 RETURN (
     WITH scheduled AS (
         SELECT SUM(wp.hours) AS hours
-        FROM {{catalog}}.{{silver_schema}}.labor l
-        JOIN {{catalog}}.{{silver_schema}}.workperiod wp
+        FROM :catalog.:silver_schema.labor l
+        JOIN :catalog.:silver_schema.workperiod wp
             ON wp.calnum = l.calnum AND wp.shiftnum = l.shiftnum
            AND wp.periodtype = 'WORK'
         WHERE l.laborcode = labor_code AND l.orgid = org_id
@@ -106,7 +106,7 @@ RETURN (
     ),
     booked AS (
         SELECT SUM(lt.regularhrs + COALESCE(lt.premiumpayhours, 0)) AS hours
-        FROM {{catalog}}.{{silver_schema}}.labtrans lt
+        FROM :catalog.:silver_schema.labtrans lt
         WHERE lt.laborcode = labor_code
           AND lt.transtype = 'WORK'
           AND lt.startdate BETWEEN window_start AND window_end
@@ -123,7 +123,7 @@ RETURN (
 -- -----------------------------------------------------------------------------
 -- expired_qualifications_count — count of expired or expiring qualifications
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION {{catalog}}.{{metrics_schema}}.expired_qualifications_count(
+CREATE OR REPLACE FUNCTION :catalog.:metrics_schema.expired_qualifications_count(
     org_id STRING COMMENT 'ORGID. NULL for all orgs.',
     within_days INT COMMENT 'Look ahead (e.g. 30 for "expiring or expired in next 30 days"). Pass 0 for only-already-expired.'
 )
@@ -131,10 +131,10 @@ RETURNS BIGINT
 COMMENT 'Trusted metric: count of active person-qualification pairs that are expired now or within N days.'
 RETURN (
     SELECT COUNT(*)
-    FROM {{catalog}}.{{silver_schema}}.qualperson qp
-    JOIN {{catalog}}.{{silver_schema}}.qualification q
+    FROM :catalog.:silver_schema.qualperson qp
+    JOIN :catalog.:silver_schema.qualification q
         ON q.qualificationid = qp.qualificationid AND q.status = 'ACTIVE'
-    JOIN {{catalog}}.{{silver_schema}}.labor l
+    JOIN :catalog.:silver_schema.labor l
         ON l.personid = qp.personid AND l.status = 'ACTIVE'
     WHERE qp.status = 'ACTIVE'
       AND qp.expirydate IS NOT NULL
@@ -146,7 +146,7 @@ RETURN (
 -- -----------------------------------------------------------------------------
 -- vacation_impact_hours — total scheduled absence hours for a labor in window
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION {{catalog}}.{{metrics_schema}}.vacation_impact_hours(
+CREATE OR REPLACE FUNCTION :catalog.:metrics_schema.vacation_impact_hours(
     labor_code STRING,
     org_id STRING,
     window_start TIMESTAMP,
@@ -156,7 +156,7 @@ RETURNS DOUBLE
 COMMENT 'Trusted metric: total scheduled absence hours (AVAILREFLY) for a labor record in a window.'
 RETURN (
     SELECT COALESCE(SUM(ar.hours), 0)
-    FROM {{catalog}}.{{silver_schema}}.availrefly ar
+    FROM :catalog.:silver_schema.availrefly ar
     WHERE ar.laborcode = labor_code AND ar.orgid = org_id
       AND ar.startdatetime BETWEEN window_start AND window_end
 );
@@ -165,8 +165,8 @@ RETURN (
 -- =============================================================================
 -- Grants (uncomment + substitute principal)
 -- =============================================================================
--- GRANT EXECUTE ON FUNCTION {{catalog}}.{{metrics_schema}}.crew_capacity_hours         TO `{{principal}}`;
--- GRANT EXECUTE ON FUNCTION {{catalog}}.{{metrics_schema}}.qualified_labor_count       TO `{{principal}}`;
--- GRANT EXECUTE ON FUNCTION {{catalog}}.{{metrics_schema}}.labor_utilization_pct       TO `{{principal}}`;
--- GRANT EXECUTE ON FUNCTION {{catalog}}.{{metrics_schema}}.expired_qualifications_count TO `{{principal}}`;
--- GRANT EXECUTE ON FUNCTION {{catalog}}.{{metrics_schema}}.vacation_impact_hours       TO `{{principal}}`;
+-- GRANT EXECUTE ON FUNCTION :catalog.:metrics_schema.crew_capacity_hours         TO `:principal`;
+-- GRANT EXECUTE ON FUNCTION :catalog.:metrics_schema.qualified_labor_count       TO `:principal`;
+-- GRANT EXECUTE ON FUNCTION :catalog.:metrics_schema.labor_utilization_pct       TO `:principal`;
+-- GRANT EXECUTE ON FUNCTION :catalog.:metrics_schema.expired_qualifications_count TO `:principal`;
+-- GRANT EXECUTE ON FUNCTION :catalog.:metrics_schema.vacation_impact_hours       TO `:principal`;

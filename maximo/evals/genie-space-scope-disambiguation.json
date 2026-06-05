@@ -1,0 +1,12 @@
+{
+  "query": "our Maximo Genie keeps giving wrong answers, fix it",
+  "expected_skill": "maximo-genie-space",
+  "expected_behavior": [
+    "Loads maximo-genie-space",
+    "Does NOT immediately rewrite SQL; surfaces the clarifying questions first",
+    "Asks which modules/tables are in scope for this Space (a too-broad Space dilutes accuracy)",
+    "Asks whose definitions seed the instructions ('open', 'completed', 'corrective vs preventive', 'bad actor', 'PM compliance' each have multiple valid framings owned by the module skills)",
+    "Confirms maximo-setup has registered UC comments and the workspace glossary, since a Space built without them is the #1 cause of wrong answers",
+    "Then fixes in order: UC comment (via maximo-setup) -> glossary synonym/instruction -> example query or Trusted Asset"
+  ]
+}

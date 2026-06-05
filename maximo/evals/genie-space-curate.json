@@ -1,0 +1,12 @@
+{
+  "query": "create a Genie Space for our Maximo data",
+  "expected_skill": "maximo-genie-space",
+  "expected_behavior": [
+    "Loads maximo-genie-space with maximo-overview as parent",
+    "Confirms maximo-setup has run (UC comments registered + workspace glossary generated) before curating",
+    "Assembles the four ingredients: general instructions (overview gotchas as rules + glossary synonyms), certified example SQL from in-scope modules, business synonyms, and Trusted Asset metric functions",
+    "Bakes universal filters into the general instructions (WOCLASS='WORKORDER', ISTASK=0, SITEID joins, status via SYNONYMDOMAIN, HISTORYFLAG awareness) without re-explaining the rationale",
+    "Defers Space create/export/import mechanics to the databricks-genie platform skill and does not re-implement them",
+    "Plans a benchmark + Monitoring-tab re-curation pass rather than declaring it done"
+  ]
+}

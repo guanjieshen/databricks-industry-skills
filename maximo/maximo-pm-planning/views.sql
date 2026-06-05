@@ -1,7 +1,15 @@
 -- =============================================================================
 -- Maximo PM Planning — Gold Views
 -- =============================================================================
--- Substitute {{catalog}}.{{silver_schema}} and {{catalog}}.{{gold_schema}}.
+-- Bind these Databricks SQL parameters before registering (via maximo-setup):
+--   :catalog        → the customer's UC catalog
+--   :silver_schema  → Silver schema with the MBO tables
+--   :gold_schema    → Gold schema these views are created in
+-- Conventions applied:
+--   * PM.STATUS = 'ACTIVE' is the STOCK active-set literal; PMSTATUS is a synonym
+--     domain, so resolve via SYNONYMDOMAIN if a customer renames it (maximo-overview).
+--   * JOBPLAN / JPLABOR / JPMATERIAL are ORG-scoped — joined on (JPNUM, ORGID).
+--   * Date buckets resolve in the app-server timezone of stored values, not UTC.
 -- =============================================================================
 
 
@@ -10,7 +18,7 @@
 -- One row per (PM, sequence). Forecasts effective next due date with bucket.
 -- Pre-joins JOBPLAN and aggregates JPLABOR / JPMATERIAL for planned cost.
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE VIEW {{catalog}}.{{gold_schema}}.v_pm_forecast
+CREATE OR REPLACE VIEW :catalog.:gold_schema.v_pm_forecast
 COMMENT 'Per-(PM, sequence) forecast with effective due date and due-bucket. Includes planned labor hours + material cost from referenced JOBPLAN.'
 AS
 WITH pm_expanded AS (
@@ -26,11 +34,11 @@ WITH pm_expanded AS (
         pm.usetargetdate,
         pm.alertlead,
         COALESCE(pm.extdate, pm.nextdate)                   AS effective_due_date
-    FROM {{catalog}}.{{silver_schema}}.pm pm
+    FROM :catalog.:silver_schema.pm pm
     WHERE pm.__END_AT IS NULL
       AND pm.status = 'ACTIVE'
       AND NOT EXISTS (
-          SELECT 1 FROM {{catalog}}.{{silver_schema}}.pmsequence seq
+          SELECT 1 FROM :catalog.:silver_schema.pmsequence seq
           WHERE seq.pmnum = pm.pmnum AND seq.siteid = pm.siteid
       )
 
@@ -48,27 +56,28 @@ WITH pm_expanded AS (
         pm.usetargetdate,
         pm.alertlead,
         COALESCE(pm.extdate, pm.nextdate)                   AS effective_due_date
-    FROM {{catalog}}.{{silver_schema}}.pm pm
-    JOIN {{catalog}}.{{silver_schema}}.pmsequence seq
+    FROM :catalog.:silver_schema.pm pm
+    JOIN :catalog.:silver_schema.pmsequence seq
         ON seq.pmnum = pm.pmnum AND seq.siteid = pm.siteid
     WHERE pm.__END_AT IS NULL
       AND pm.status = 'ACTIVE'
 ),
 labor_rollup AS (
     SELECT jpnum, orgid, SUM(laborhrs) AS planned_labor_hours, SUM(linecost) AS planned_labor_cost
-    FROM {{catalog}}.{{silver_schema}}.jplabor
+    FROM :catalog.:silver_schema.jplabor
     WHERE __END_AT IS NULL
     GROUP BY jpnum, orgid
 ),
 material_rollup AS (
     SELECT jpnum, orgid, SUM(linecost) AS planned_material_cost
-    FROM {{catalog}}.{{silver_schema}}.jpmaterial
+    FROM :catalog.:silver_schema.jpmaterial
     WHERE __END_AT IS NULL
     GROUP BY jpnum, orgid
 )
 SELECT
     e.pmnum, e.siteid, e.sequence_num,
     e.effective_jpnum                                       AS jpnum,
+    e.orgid,
     e.assetnum, e.location,
     a.description                                           AS asset_description,
     a.criticality                                           AS asset_criticality,
@@ -86,7 +95,7 @@ SELECT
     COALESCE(lr.planned_labor_cost, 0)                      AS planned_labor_cost,
     COALESCE(mr.planned_material_cost, 0)                   AS planned_material_cost
 FROM pm_expanded e
-LEFT JOIN {{catalog}}.{{silver_schema}}.asset a
+LEFT JOIN :catalog.:silver_schema.asset a
     ON a.assetnum = e.assetnum AND a.siteid = e.siteid AND a.__END_AT IS NULL
 LEFT JOIN labor_rollup lr
     ON lr.jpnum = e.effective_jpnum AND lr.orgid = e.orgid
@@ -100,7 +109,7 @@ LEFT JOIN material_rollup mr
 -- week_starting). Sums planned labor hours from JPLABOR across forecast PMs
 -- whose effective due date falls in each week.
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE VIEW {{catalog}}.{{gold_schema}}.v_pm_workload_by_craft
+CREATE OR REPLACE VIEW :catalog.:gold_schema.v_pm_workload_by_craft
 COMMENT 'Forecast labor demand by craft × week × site. Aggregates JPLABOR across PMs whose effective due date falls in each week.'
 AS
 SELECT
@@ -109,9 +118,10 @@ SELECT
     date_trunc('WEEK', f.effective_due_date)                AS week_starting,
     SUM(jpl.laborhrs)                                        AS planned_labor_hours,
     COUNT(DISTINCT f.pmnum)                                  AS pm_count
-FROM {{catalog}}.{{gold_schema}}.v_pm_forecast f
-JOIN {{catalog}}.{{silver_schema}}.jplabor jpl
-    ON jpl.jpnum = f.jpnum AND jpl.__END_AT IS NULL
+FROM :catalog.:gold_schema.v_pm_forecast f
+JOIN :catalog.:silver_schema.jplabor jpl
+    ON jpl.jpnum = f.jpnum AND jpl.orgid = f.orgid   -- JOBPLAN is org-scoped (gotcha 9)
+   AND jpl.__END_AT IS NULL
 WHERE f.effective_due_date >= current_date()
   AND f.effective_due_date <= current_date() + INTERVAL 365 DAYS
 GROUP BY f.siteid, jpl.craft, date_trunc('WEEK', f.effective_due_date);
@@ -122,7 +132,7 @@ GROUP BY f.siteid, jpl.craft, date_trunc('WEEK', f.effective_due_date);
 -- Per-JOBPLAN list of PMs and assets that reference it. Use for impact analysis
 -- ("if I change JP-PUMP-3MO, what's affected?").
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE VIEW {{catalog}}.{{gold_schema}}.v_jobplan_assets
+CREATE OR REPLACE VIEW :catalog.:gold_schema.v_jobplan_assets
 COMMENT 'Per-JOBPLAN list of referencing PMs/assets/sites. Use for change-impact analysis when modifying a job plan template.'
 AS
 SELECT
@@ -133,11 +143,11 @@ SELECT
     COUNT(DISTINCT pm.assetnum)                              AS distinct_assets,
     array_agg(DISTINCT pm.siteid)                            AS sites_using,
     COUNT(DISTINCT seq.pmnum)                                AS pmsequence_count
-FROM {{catalog}}.{{silver_schema}}.jobplan jp
-LEFT JOIN {{catalog}}.{{silver_schema}}.pm pm
+FROM :catalog.:silver_schema.jobplan jp
+LEFT JOIN :catalog.:silver_schema.pm pm
     ON pm.jpnum = jp.jpnum AND pm.orgid = jp.orgid
    AND pm.__END_AT IS NULL AND pm.status = 'ACTIVE'
-LEFT JOIN {{catalog}}.{{silver_schema}}.pmsequence seq
+LEFT JOIN :catalog.:silver_schema.pmsequence seq
     ON seq.jpnum = jp.jpnum
 WHERE jp.__END_AT IS NULL
 GROUP BY jp.jpnum, jp.orgid, jp.description, jp.status;
@@ -148,7 +158,7 @@ GROUP BY jp.jpnum, jp.orgid, jp.description, jp.status;
 -- Forecast PMs clustered by LOCATIONS parent for route grouping.
 -- One row per (location_parent, forecast_week, pmnum).
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE VIEW {{catalog}}.{{gold_schema}}.v_pm_route_clusters
+CREATE OR REPLACE VIEW :catalog.:gold_schema.v_pm_route_clusters
 COMMENT 'Forecast PMs grouped by parent location for route optimization. One row per (location_parent, forecast_week, pmnum).'
 AS
 SELECT
@@ -160,8 +170,8 @@ SELECT
     f.jpnum,
     f.planned_labor_hours,
     f.planned_material_cost
-FROM {{catalog}}.{{gold_schema}}.v_pm_forecast f
-LEFT JOIN {{catalog}}.{{silver_schema}}.locations l
+FROM :catalog.:gold_schema.v_pm_forecast f
+LEFT JOIN :catalog.:silver_schema.locations l
     ON l.location = f.location AND l.siteid = f.siteid AND l.__END_AT IS NULL
 WHERE f.effective_due_date >= current_date()
   AND f.effective_due_date <= current_date() + INTERVAL 90 DAYS;

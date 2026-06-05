@@ -2,6 +2,28 @@
 
 The traps that cause Maximo Silver/Gold layers to be subtly wrong.
 
+> Universal Maximo mechanics — SITEID composite keys, `WOCLASS` filtering,
+> `ISTASK` tasks-vs-child-WOs, status-is-a-synonym-domain (`SYNONYMDOMAIN`
+> resolution), `HISTORYFLAG`, and app-server-timezone datetimes — are owned by
+> `maximo-overview`. This file APPLIES them to the Silver/Gold layer; it does not
+> re-teach them. The one rule worth restating for pipeline authors:
+> **mirror Bronze in full — never copy Maximo's `HISTORYFLAG = 0` List-view
+> filter into Silver.** Closed/cancelled records carry `HISTORYFLAG = 1`; drop
+> them and every downstream completion/trend/MTBF metric goes blank. Let
+> consumers filter `HISTORYFLAG` per query, not the pipeline.
+
+## Contents
+
+1. WOSTATUS must be APPEND-ONLY, never APPLY CHANGES
+2. `WOCLASS` filter belongs at the Silver layer
+3. ASSET hierarchy and SCD2
+4. METERREADING volume
+5. plusg* tables — extension solution joins
+6. SCD2 vs SCD1 for master data
+7. Multi-currency and units of measure (defer methodology to maximo-maintenance-cost)
+8. Don't materialize Gold metric views as Delta tables
+9. Test the pipeline on a known-volume Bronze before going live
+
 ## 1. WOSTATUS must be APPEND-ONLY, never APPLY CHANGES
 
 `WOSTATUS` is a **transition log** — one row per status change per WO. If you `APPLY CHANGES INTO` keyed by `(WONUM, SITEID)`, you collapse the entire history to one row per WO. This is the single most common modeling error.
@@ -35,7 +57,7 @@ Build two Silver tables:
 
 `ASSET` is naturally SCD2 — assets change attributes (criticality, manufacturer, parent) over their decades-long lifetime, and reliability/integrity analytics care about WHAT the asset was at the time of a failure event.
 
-When joining `v_workorder_enriched` to ASSET, the example views in `gold_views.sql` filter to `a.__END_AT IS NULL` for current state. For time-travel queries (what was the criticality on the day of the failure?), use a range join against `__START_AT` / `__END_AT`.
+When joining a Gold view to ASSET, the example views in `gold_views.sql` (e.g. `v_failure_events`) filter to `a.__END_AT IS NULL` for current state. For time-travel queries (what was the criticality on the day of the failure?), use a range join against `__START_AT` / `__END_AT`.
 
 ## 4. METERREADING volume
 
@@ -58,18 +80,26 @@ Convention I recommend:
 
 If you're not sure, SCD2 is the safer default. Costs more storage but preserves time-travel.
 
-## 7. Currency, units of measure, and SITEID drift
+## 7. Multi-currency and units of measure
 
-In multi-site or multi-country deployments:
-- Labor costs may be in different currencies per SITEID
-- Material costs may be in different units of measure
-- Meter readings may have different unit conventions across regions
+In multi-site or multi-country deployments, `WORKORDER.WOCURRENCY` / `EXCHANGERATE`
+vary across orgs/sites, material costs may be in different units of measure, and
+meter readings may use different unit conventions across regions. Summing
+`LINECOST` across currencies is meaningless.
 
-Don't sum `LINECOST` across sites blindly. Either normalize at Silver (preferred) or refuse to aggregate cross-currency in downstream queries.
+**At the Silver/Gold layer, pass cost columns through unmodified** —
+`LINECOST`, `WOCURRENCY`, `EXCHANGERATE`, `ACTLABCOST`, `ACTMATCOST`. Do NOT
+build currency normalization into this layer. The multi-currency normalization
+methodology (and cost rollup, estimate-vs-actual variance, contractor spend) is
+owned by **`maximo-maintenance-cost`** — defer to it rather than re-implementing
+a conversion here, so the normalization is consistent across all consumers.
+
+If you must surface a unit/currency-aware default, expose `WOCURRENCY` alongside
+the raw cost so downstream skills can group correctly.
 
 ## 8. Don't materialize Gold metric views as Delta tables
 
-`v_workorder_enriched`, `v_failure_events`, etc. should be views, not materialized tables. Why:
+`v_failure_events`, `v_pm_schedule`, and the module-owned Gold views should be views, not materialized tables. Why:
 - They're recomputed cheaply at query time over the (already-incremental) Silver streaming tables
 - Materializing them creates staleness windows
 - AI/BI dashboards and Genie Spaces hit them millions of times — the cost of materializing isn't worth the staleness risk

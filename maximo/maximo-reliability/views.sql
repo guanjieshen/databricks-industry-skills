@@ -5,7 +5,13 @@
 -- (already shipped by maximo-data-engineering's gold_views.sql) and the
 -- meter-excursion view added here.
 --
--- Substitute {{catalog}}.{{silver_schema}} and {{catalog}}.{{gold_schema}}.
+-- Substitute :catalog.:silver_schema and :catalog.:gold_schema.
+--
+-- STATUS NOTE (universal mechanic — see maximo-overview): status literals
+-- ('COMP','CLOSE') are correct in stock Maximo; if this deployment renames
+-- WO-status synonyms, resolve via SYNONYMDOMAIN (domainid='WOSTATUS'). Reliability
+-- metrics depend on closed records — confirm HISTORYFLAG=1 history is present in
+-- silver before trusting roll-ups.
 -- =============================================================================
 
 
@@ -13,7 +19,7 @@
 -- v_meter_excursions
 -- Meter readings that breached configured action thresholds.
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE VIEW {{catalog}}.{{gold_schema}}.v_meter_excursions
+CREATE OR REPLACE VIEW :catalog.:gold_schema.v_meter_excursions
 COMMENT 'Meter readings that exceeded an ASSETMETER action threshold. One row per excursion. Use for condition-monitoring exception analytics.'
 AS
 SELECT
@@ -30,8 +36,8 @@ SELECT
         WHEN am.actionlimitlo IS NOT NULL AND mr.reading < am.actionlimitlo
             THEN 'BELOW_LOW'
     END AS excursion_type
-FROM {{catalog}}.{{silver_schema}}.meterreading mr
-JOIN {{catalog}}.{{silver_schema}}.assetmeter am
+FROM :catalog.:silver_schema.meterreading mr
+JOIN :catalog.:silver_schema.assetmeter am
     ON am.assetnum = mr.assetnum
    AND am.siteid   = mr.siteid
    AND am.metername = mr.metername
@@ -46,7 +52,7 @@ WHERE
 -- Per-asset rollup of failure rate, time-since-last-failure, criticality.
 -- Useful as a feature input or for bad-actor analysis.
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE VIEW {{catalog}}.{{gold_schema}}.v_asset_reliability_summary
+CREATE OR REPLACE VIEW :catalog.:gold_schema.v_asset_reliability_summary
 COMMENT 'Per-asset reliability summary — failure count last 12 months, time since last failure, criticality. One row per active asset.'
 AS
 SELECT
@@ -61,18 +67,18 @@ SELECT
     datediff(DAY, f.last_failure_date, current_date()) AS days_since_last_failure,
     p.last_pm_date,
     datediff(DAY, p.last_pm_date, current_date())      AS days_since_last_pm
-FROM {{catalog}}.{{silver_schema}}.asset a
+FROM :catalog.:silver_schema.asset a
 LEFT JOIN (
     SELECT assetnum, siteid,
            COUNT(*) AS failure_count_12mo,
            MAX(event_start) AS last_failure_date
-    FROM {{catalog}}.{{gold_schema}}.v_failure_events
+    FROM :catalog.:gold_schema.v_failure_events
     WHERE event_start >= add_months(current_date(), -12)
     GROUP BY assetnum, siteid
 ) f ON f.assetnum = a.assetnum AND f.siteid = a.siteid
 LEFT JOIN (
     SELECT assetnum, siteid, MAX(actfinish) AS last_pm_date
-    FROM {{catalog}}.{{silver_schema}}.workorder
+    FROM :catalog.:silver_schema.workorder
     WHERE pmnum IS NOT NULL
       AND status IN ('COMP', 'CLOSE')
     GROUP BY assetnum, siteid

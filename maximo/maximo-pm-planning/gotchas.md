@@ -1,85 +1,114 @@
 # Maximo PM Planning — Gotchas
 
+Domain-specific PM-planning traps. **Universal Maximo mechanics (SITEID composite
+keys, status-is-a-synonym-domain / `SYNONYMDOMAIN` resolution, `HISTORYFLAG`,
+app-server-timezone datetimes, `WOCLASS`, `ISTASK`) live in `maximo-overview` —
+apply them in your SQL; this file does not re-teach them.**
+
+## Contents
+1. PMs vs the WOs they generate
+2. Multi-frequency PMs use `PMSEQUENCE` — expand before counting
+3. `COALESCE(EXTDATE, NEXTDATE)` — the effective due date
+4. Only active PMs generate work — and `PM.STATUS` is a synonym domain
+5. Fixed vs floating affects next-cycle forecast
+6. `ALERTLEAD` generates WOs ahead of `NEXTDATE`
+7. Customer-specific tolerance windows
+8. Meter-based PM forecasts depend on `ASSETMETER.AVERAGE`
+9. JOBPLAN joins are org-scoped, not site-scoped
+10. JOBPLAN sharing & change-impact analysis
+11. Resource capacity content is owned by `maximo-labor-resources`
+
 ## 1. PMs vs the WOs they generate
 
 The single most important distinction in this skill:
 
 | Concept | Maximo object | Time orientation |
 |---|---|---|
-| The **schedule** | `PM` (and `PMSEQUENCE` for multi-cadence) | Forward — `NEXTDATE` is the next instance |
+| The **schedule** | `PM` (and `PMSEQUENCE` for multi-cadence) | Forward — `COALESCE(EXTDATE, NEXTDATE)` is the next instance |
 | The **instance** | `WORKORDER` where `PMNUM IS NOT NULL` | Backward — when the schedule fired |
 
 For **forecasting**: query `PM` against `COALESCE(EXTDATE, NEXTDATE)`.
 
-For **historical execution / compliance**: query `WORKORDER` filtered by `PMNUM IS NOT NULL` (lives in `maximo-reliability`).
+For **historical execution / compliance**: query `WORKORDER` filtered by `PMNUM IS NOT NULL` (lives in `maximo-reliability`). When you do touch generated WOs, apply `maximo-overview`'s `WOCLASS`/`HISTORYFLAG` rules — closed WOs carry `HISTORYFLAG = 1` and may be filtered out of standard views, which skews any PM-execution trend.
 
-Never use a single query to do both — it gets confusing fast.
+Never use a single query to do both directions — it gets confusing fast.
 
 ## 2. Multi-frequency PMs use `PMSEQUENCE` — expand before counting
 
-The same PM can produce multiple work cadences. A pump PM might do 30-day lube + 90-day inspection + 365-day rebuild, all from one PM row with three `PMSEQUENCE` rows.
+The same PM can produce multiple work cadences. A pump PM might do 30-day lube + 90-day inspection + 365-day rebuild, all from one PM row with three `PMSEQUENCE` rows, each with its own `JPNUM`.
 
 A naive `COUNT(*) FROM PM` undercounts the actual workload produced. Always expand:
 
 ```sql
--- Each sequence is a separate forecast row
+-- Each sequence is a separate forecast row; LEFT JOIN keeps single-cadence PMs
 SELECT pm.pmnum, pm.siteid,
-       COALESCE(seq.jpnum, pm.jpnum) AS effective_jpnum,
+       COALESCE(seq.jpnum, pm.jpnum)       AS effective_jpnum,
        COALESCE(seq.frequency, pm.frequency) AS effective_frequency,
        COALESCE(seq.frequnit, pm.frequnit)   AS effective_frequnit
-FROM pm
-LEFT JOIN pmsequence seq ON seq.pmnum = pm.pmnum AND seq.siteid = pm.siteid
-WHERE pm.__END_AT IS NULL AND pm.status = 'ACTIVE';
+FROM :catalog.:silver_schema.pm pm
+LEFT JOIN :catalog.:silver_schema.pmsequence seq
+  ON seq.pmnum = pm.pmnum AND seq.siteid = pm.siteid
+WHERE pm.__END_AT IS NULL AND pm.status = 'ACTIVE';   -- see gotcha 4 re: status
 ```
 
 For PMs without sequences, the `pm` row itself is the single cadence (LEFT JOIN preserves it).
 
-## 3. `COALESCE(EXTDATE, NEXTDATE)` — same gotcha as reliability
+## 3. `COALESCE(EXTDATE, NEXTDATE)` — the effective due date
 
-The PM Extended Date overrides Next Due Date. See [`../maximo-reliability/gotchas.md`](../maximo-reliability/gotchas.md) gotcha 2a for the full explanation. For forecasting, **always** use `COALESCE(EXTDATE, NEXTDATE)` as the effective due date.
+`PM.EXTDATE` (Extended Date) is a one-time override of `PM.NEXTDATE`. For forecasting, **always** use `COALESCE(EXTDATE, NEXTDATE)` as the effective due date — forecasting on `NEXTDATE` alone ignores deferrals/advances. See [`../maximo-reliability/gotchas.md`](../maximo-reliability/gotchas.md) for the full `PM`-date reference (reliability owns the `PM` schema).
 
-## 4. Only `STATUS = 'ACTIVE'` PMs generate work
+## 4. Only active PMs generate work — and `PM.STATUS` is a synonym domain
 
-`DRAFT`, `INACTIVE`, and `PENDING` PMs sit in the table but don't fire. Filter `WHERE pm.status = 'ACTIVE'` for forecast queries.
+`DRAFT`, `INACTIVE`, and `PENDING` PMs sit in the table but don't fire. Filter to the active set in every forecast query.
 
-## 5. Fixed vs floating affects forecast accuracy
+Caveat: `PM.STATUS` stores the customer-renamable synonym `VALUE` (domain `PMSTATUS`), not the internal `MAXVALUE`. A literal `status = 'ACTIVE'` is correct only in a stock deployment. If the customer has renamed/added synonyms, resolve the active set from the internal `MAXVALUE` via `SYNONYMDOMAIN` (the universal pattern is owned by `maximo-overview`):
+
+```sql
+WHERE pm.status IN (
+    SELECT value FROM :catalog.:silver_schema.synonymdomain
+    WHERE domainid = 'PMSTATUS' AND maxvalue = 'ACTIVE'
+)
+```
+
+## 5. Fixed vs floating affects next-cycle forecast
 
 `PM.USETARGETDATE`:
 - **TRUE (fixed)**: anchor on `LASTSTARTDATE` — next due = anchor + frequency
 - **FALSE (floating)**: anchor on `LASTCOMPDATE` — next due = anchor + frequency
 
-For forecast queries, the `NEXTDATE` is already calculated by Maximo using the right anchor — you just consume it. But when **predicting** the next-next due date, the anchor matters. See [`../maximo-reliability/gotchas.md`](../maximo-reliability/gotchas.md) gotcha 2b.
+For forecast queries, `NEXTDATE` is already calculated by Maximo using the right anchor — just consume it. The anchor only matters when **predicting** the next-next due date. See [`../maximo-reliability/gotchas.md`](../maximo-reliability/gotchas.md) for the full anchor reference.
 
 ## 6. `ALERTLEAD` generates WOs ahead of `NEXTDATE`
 
-`PM.ALERTLEAD` specifies how many days before `NEXTDATE` the WO is auto-generated. A PM with `ALERTLEAD = 14` will produce its WO 14 days before its `NEXTDATE`.
+`PM.ALERTLEAD` specifies how many days before `NEXTDATE` the WO is auto-generated. A PM with `ALERTLEAD = 14` produces its WO 14 days before its `NEXTDATE`.
 
-For "due soon" buckets:
-- "Due in next 30 days" includes PMs with `ALERTLEAD >= effective_due - current_date + (30 - alertlead)` — complicated. Easier: report against `NEXTDATE` directly, and separately surface WOs in `WAPPR` status that the planner needs to action.
+For "due soon" buckets, prefer reporting against `COALESCE(EXTDATE, NEXTDATE)` directly and surfacing already-generated WOs (in `WAPPR`) separately, rather than trying to fold `ALERTLEAD` into the bucket math. If a customer truly wants "what will have been generated by date X", extend the window by `ALERTLEAD`:
 
 ```sql
--- Forecast PMs effectively due in next 30 days, accounting for ALERTLEAD
-SELECT *
-FROM pm
-WHERE status = 'ACTIVE'
-  AND COALESCE(extdate, nextdate)
+-- Forecast PMs whose WO will be generated within the next 30 days
+SELECT pm.pmnum, pm.siteid, COALESCE(pm.extdate, pm.nextdate) AS effective_due
+FROM :catalog.:silver_schema.pm pm
+WHERE pm.status = 'ACTIVE'          -- see gotcha 4 re: synonym
+  AND COALESCE(pm.extdate, pm.nextdate)
         BETWEEN current_date()
             AND current_date() + INTERVAL 30 DAY
-            + INTERVAL '1' DAY * COALESCE(alertlead, 0);
+                                + INTERVAL '1' DAY * COALESCE(pm.alertlead, 0);
 ```
+
+Note: `current_date()` / date arithmetic resolves in the app-server timezone of the stored datetimes — don't assume UTC when bucketing across sites (`maximo-overview`).
 
 ## 7. Customer-specific tolerance windows
 
 Customers use different tolerances for "on-time" classification:
 - SMRP standard: 10% of frequency
-- Strict: 0 days (must be on or before NEXTDATE)
+- Strict: 0 days (must be on or before `NEXTDATE`)
 - Custom: fixed days regardless of frequency
 
-The shipped views use **due-bucket** classification (OVERDUE / DUE_30D / DUE_90D / FUTURE) which is tolerance-independent. If the customer wants on-time compliance bucketing, register a customer-specific view.
+The shipped views use **due-bucket** classification (OVERDUE / DUE_30D / DUE_60D / DUE_90D / FUTURE), which is tolerance-independent. If the customer wants on-time compliance bucketing, surface the tolerance question (SKILL.md *Questions to surface first*) and register a customer-specific view. On-time *compliance* (a past measure) belongs to `maximo-reliability`.
 
 ## 8. Meter-based PM forecasts depend on `ASSETMETER.AVERAGE`
 
-For meter-based PMs (frequency in HOURS, MILES, READINGS), forecasting uses:
+For meter-based PMs (`FREQUNIT` in `HOURS`, `MILES`, `READINGS`), forecasting uses:
 
 ```
 forecast_next_due ≈ LASTREADINGDATE + (FREQUENCY - LASTREADING) / AVERAGE
@@ -87,36 +116,36 @@ forecast_next_due ≈ LASTREADINGDATE + (FREQUENCY - LASTREADING) / AVERAGE
 
 `ASSETMETER.AVERAGE` is a Maximo-computed rolling per-day rate. If it's NULL or 0 (new meter, no usage history), the forecast is unknowable — return NULL.
 
-The shipped `meter_based_pm_forecast` UDF handles this. Don't bake assumptions about non-zero averages into custom queries.
+The shipped `meter_based_pm_forecast` UDF handles this and matches the meter on `ASSETMETER.METERNAME = PM.METERNAME`. Confirm which `METERNAME` is the runtime meter for the deployment (SKILL.md *Questions to surface first*). Don't bake assumptions about non-zero averages into custom queries.
 
-## 9. Resource capacity content moved to `maximo-labor-resources`
+## 9. JOBPLAN joins are org-scoped, not site-scoped
 
-`CALENDAR` / `WORKPERIOD` / `AVAILREFLY` define crew availability — they're labor-master concerns, owned by [`../maximo-labor-resources/`](../maximo-labor-resources/). When the user asks workload-vs-capacity questions, **compose both skills**: pm-planning provides the forecast workload (`v_pm_workload_by_craft`, `pm_workload_hours` UDF); labor-resources provides capacity (`v_crew_capacity`, `crew_capacity_hours` UDF).
-
-See `../maximo-labor-resources/gotchas.md` gotcha 3 for the half-populated coverage probe — that's where the gotcha lives now.
-
-## 10. JOBPLAN can be shared across many PMs
-
-The same JOBPLAN can be referenced by many PMs. When summing planned labor for "all PMs in the next 30 days":
+`JOBPLAN` and its children (`JPLABOR`, `JPMATERIAL`, `JPSERVICE`, `JPSEGMENT`) are keyed on `(JPNUM, ORGID)` — templates are **org-scoped**, not site-scoped. PMs are site-scoped `(PMNUM, SITEID)` but carry `ORGID`. Join PM → JOBPLAN on `(JPNUM, ORGID)`:
 
 ```sql
--- Per-PM × JOBPLAN labor expansion
-SELECT
-    pm.pmnum,
-    jpl.craft,
-    jpl.laborhrs                  AS labor_hours_per_instance
-FROM pm
-JOIN jplabor jpl ON jpl.jpnum = pm.jpnum AND jpl.orgid = pm.orgid
-WHERE pm.status = 'ACTIVE'
-  AND COALESCE(pm.extdate, pm.nextdate) BETWEEN current_date() AND current_date() + INTERVAL 30 DAY;
+JOIN :catalog.:silver_schema.jplabor jpl
+  ON jpl.jpnum = pm.jpnum AND jpl.orgid = pm.orgid
 ```
 
-For "JOBPLAN edit impact" analysis ("if I change `JP-PUMP-3MO` labor hours, what PMs are affected?"), GROUP BY `JPNUM`:
+Joining JOBPLAN children on `SITEID` drops rows; joining on `JPNUM` alone cross-products across orgs that reuse the same job-plan number. (The site/org composite-key principle itself is `maximo-overview`'s.)
+
+## 10. JOBPLAN sharing & change-impact analysis
+
+The same JOBPLAN can be referenced by many PMs. When summing planned labor for "all PMs in the next 30 days", expand per PM × JOBPLAN line:
 
 ```sql
-SELECT pm.jpnum, COUNT(*) AS pm_count, COUNT(DISTINCT pm.assetnum) AS distinct_assets
-FROM pm
-WHERE pm.__END_AT IS NULL AND pm.status = 'ACTIVE'
-GROUP BY pm.jpnum
-ORDER BY pm_count DESC;
+SELECT pm.pmnum, jpl.craft, jpl.laborhrs AS labor_hours_per_instance
+FROM :catalog.:silver_schema.pm pm
+JOIN :catalog.:silver_schema.jplabor jpl
+  ON jpl.jpnum = pm.jpnum AND jpl.orgid = pm.orgid AND jpl.__END_AT IS NULL
+WHERE pm.__END_AT IS NULL
+  AND pm.status = 'ACTIVE'         -- see gotcha 4 re: synonym
+  AND COALESCE(pm.extdate, pm.nextdate)
+        BETWEEN current_date() AND current_date() + INTERVAL 30 DAY;
 ```
+
+For "JOBPLAN edit impact" ("if I change `JP-PUMP-3MO` labor hours, what PMs are affected?"), GROUP BY `(JPNUM, ORGID)` — see `v_jobplan_assets` and example 7.
+
+## 11. Resource capacity content is owned by `maximo-labor-resources`
+
+`CALENDAR` / `WORKPERIOD` / `AVAILREFLY` define crew availability — they're labor-master concerns, owned by [`../maximo-labor-resources/`](../maximo-labor-resources/). For workload-vs-capacity questions, **compose both skills**: pm-planning provides forecast workload (`v_pm_workload_by_craft`, `pm_workload_hours` UDF); labor-resources provides capacity (`v_crew_capacity`, `crew_capacity_hours` UDF) and the half-populated-coverage probe. Don't re-document the capacity master here.

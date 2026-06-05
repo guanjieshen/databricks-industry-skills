@@ -38,6 +38,23 @@ FROM   {{catalog}}.{{schema}}.workorder
 WHERE  upper(status) NOT IN ('COMP', 'CLOSE', 'CAN')
 ORDER  BY 1;
 
+-- 3c) STATUS synonym renamings — status columns store the customer-renamable
+--     SYNONYMDOMAIN.VALUE, not the internal MAXVALUE (see maximo-overview).
+--     Rows where VALUE <> MAXVALUE are customer renamings to record in the glossary.
+--     (Skip if the SYNONYMDOMAIN table was not mirrored into Silver.)
+SELECT domainid, maxvalue, value
+FROM   {{catalog}}.{{schema}}.synonymdomain
+WHERE  upper(domainid) IN ('WOSTATUS','ASSETSTATUS','LOCSTATUS','SRSTATUS')
+ORDER  BY domainid, maxvalue;
+
+-- 3d) HISTORYFLAG distribution — confirm closed/history records are PRESENT.
+--     Records at a final status get HISTORYFLAG=1 and drop out of standard List
+--     views (see maximo-overview); completion/trend metrics must include them.
+SELECT historyflag, COUNT(*) AS n
+FROM   {{catalog}}.{{schema}}.workorder
+GROUP  BY historyflag
+ORDER  BY historyflag;
+
 -- 4) ASSET class list (map to business names in the interview)
 SELECT classstructureid, COUNT(*) AS n
 FROM   {{catalog}}.{{schema}}.asset

@@ -6,13 +6,15 @@ description: |
   orders (WO, WONUM, WORKORDER), assets (ASSETNUM, asset hierarchy), locations
   (LOCATIONS), labor (LABTRANS, craft), PMs (preventive maintenance, JOBPLAN),
   failure analysis, MBO data model, plusg* / plusc* / plust* industry-solution
-  tables. Orients Genie on Maximo's data model, the module map, and the five
+  tables. Orients Genie on Maximo's data model, the module map, and the
   universal gotchas that apply across any Maximo query (SITEID composite keys,
   WOCLASS filtering, ISTASK dedup, WOSTATUS-vs-WORKORDER history split,
-  customer-configurable open-status set). This is the foundation skill loaded
-  for any Maximo question — other Maximo skills layer on top.
+  SYNONYMDOMAIN status resolution, HISTORYFLAG closed-record filtering,
+  app-server-timezone datetimes, customer-configurable open-status set). This
+  is the foundation skill loaded for any Maximo question and the canonical home
+  for cross-cutting facts — other Maximo skills layer on top and defer here.
 metadata:
-  version: "0.2.0"
+  version: "0.3.0"
 ---
 
 # Maximo Overview
@@ -35,19 +37,23 @@ If the user's question is module-specific (work orders, reliability metrics, int
 2. **Workspace glossary**: check whether a `<customer>-maximo-glossary` workspace skill is installed. If yes, defer business-jargon resolution to it.
 3. **`maximo-setup` status**: if not yet run, UC table/column comments and customer-specific conventions (open-status set, MTBF formula, custom worktypes) are missing — Genie quality degrades. Offer to run it. Setup is split-responsibility by design: facts that fit cleanly in a UC column comment live there (Genie reads them directly); the rest live in skill content as a staging ground that can graduate to comments over time.
 
-## The five universal gotchas (apply to almost every Maximo query)
+## The universal gotchas (apply to almost every Maximo query)
 
-Read these every time. They are the cause of ~80% of wrong answers Genie gives on Maximo data without this skill loaded.
+Read these every time. They are the cause of ~80% of wrong answers Genie gives on Maximo data without this skill loaded. **This is the canonical home for these cross-cutting facts — module skills reference and apply them rather than restating them.**
 
 1. **`WORKORDER.STATUS` is *current*; history is in `WOSTATUS`.** A WO has one row in `WORKORDER` (current state) and N rows in `WOSTATUS` (one per status transition). Asking "what's the status of WO X" → `WORKORDER`. Asking "how long was WO X in INPRG" → `WOSTATUS`.
 
 2. **`WORKORDER` is a multi-purpose table — filter by `WOCLASS`.** It also holds PM records (`'PM'`), Changes (`'CHANGE'`), Releases (`'RELEASE'`), Activities (`'ACTIVITY'`). For normal work-order analysis, always `WHERE WOCLASS = 'WORKORDER'`. Without this filter, backlog counts and labor totals are inflated.
 
-3. **`ISTASK = 1` rows are child tasks — dedupe to parent for backlog counts.** A WO has a header (`ISTASK = 0`) and may have N child tasks (`ISTASK = 1`, each with a `PARENT` pointer). Counting all rows double-counts.
+3. **`ISTASK` — tasks vs child work orders.** `ISTASK = 1` rows are tasks *within* a parent (not standalone WOs); `ISTASK = 0` with a `PARENT` set is an independently-tracked child WO. Count `ISTASK = 0` for WO counts; add `PARENT IS NULL` for top-level headers only. `PARENT` is mutable (work packages regroup WOs). Counting all rows double-counts.
 
 4. **`SITEID` is part of every business key.** `WONUM`, `ASSETNUM`, `LOCATION`, `JPNUM` are unique only within a site. Joining without `SITEID` produces a cross product. Always include `SITEID` in joins between Maximo tables.
 
-5. **Open-status set is customer-configurable.** Maximo defaults are `WAPPR / APPR / WSCH / WMATL / INPRG`, but every customer extends. "Open" typically means everything except `COMP / CLOSE / CAN`. Confirm with the user OR consult the workspace glossary skill.
+5. **Status is a SYNONYM DOMAIN — filter on the synonym, and the open set is configurable.** Status columns store the customer-renamable synonym (`SYNONYMDOMAIN.VALUE`), **not** the internal `MAXVALUE` that Maximo logic uses. A literal `STATUS IN ('COMP',…)` silently misses custom synonyms — resolve the set from the internal value: `status IN (SELECT value FROM synonymdomain WHERE domainid='WOSTATUS' AND maxvalue IN (...))`. This applies to *every* status domain (`WOSTATUS`, `SRSTATUS`, `INCIDENTSTATUS`, `PROBLEMSTATUS`, `ASSETSTATUS`, `INVSTATUS`, `POSTATUS`, …). In stock Maximo internal==external, so literals work until a customer adds synonyms. The "open" set defaults to everything except `COMP / CLOSE / CAN` (defaults `WAPPR / APPR / WSCH / WMATL / INPRG`) but is customer-configurable — confirm with the user or the workspace glossary.
+
+6. **`HISTORYFLAG` hides closed/cancelled records.** A record gets `HISTORYFLAG = 1` at a *final* status (e.g. `CLOSE` / `CAN`) — it becomes a history record and drops out of standard List views (the IBM-shipped views filter `HISTORYFLAG = 0`). Before any completion/trend metric, confirm closed records are even present in the data. Applies to `WORKORDER`, `TICKET`, `PO`, `PR`, etc.
+
+7. **Datetimes are stored in the app-server timezone, not per-row UTC.** Maximo stores datetimes in the application server's local timezone (often UTC, but that's a deployment config choice — not guaranteed) and converts to each user's profile timezone for display. Don't assume UTC when bucketing by day/week/month across sites in different timezones — confirm the deployment's app-server timezone (a `maximo-setup` fact).
 
 ## The Maximo module map (which tables live where)
 
@@ -95,8 +101,12 @@ Tables Genie should know exist, organized by Maximo module:
 
 Other industry-solution prefixes you may see: `PLUSC` (Calibration), `PLUST` (Transportation), `PLUSU` (Utilities).
 
+### Cross-record relationships
+- `TICKET` — service requests / incidents / problems (`SR`, `INCIDENT`, `PROBLEM`); a follow-up WO points back via `ORIGRECORDID` / `ORIGRECORDCLASS`
+- `RELATEDRECORD` — record-relationship links (types `FOLLOWUP` / `ORIGINATOR` / `RELATED`); follow-ups live in separate hierarchies and do NOT roll up to the originator
+
 ### Operational / system
-- `SYNONYMDOMAIN` — value-domain lookups (e.g. status synonyms per `DOMAINID`)
+- `SYNONYMDOMAIN` — synonym-domain lookup (gotcha 5). Key columns: `DOMAINID`, `MAXVALUE` (internal value), `VALUE` (the synonym actually stored on the record)
 - `MAXVARS` — system-wide config values
 
 ## Cardinality cheat-sheet
@@ -127,7 +137,7 @@ Other industry-solution prefixes you may see: `PLUSC` (Calibration), `PLUST` (Tr
 | `ACTSTART` / `ACTFINISH` | Actual execution window |
 | `CHANGEDATE` (on `WOSTATUS`) | When this status transition was logged |
 
-"Backlog age" usually = `current_date() - REPORTDATE` for open WOs. Some customers prefer days-in-current-status (`current_date() - STATUSDATE`). Confirm.
+"Backlog age" usually = `current_date() - REPORTDATE` for open WOs. Some customers prefer days-in-current-status (`current_date() - STATUSDATE`). Confirm. And per gotcha 7, these columns are stored in the app-server timezone (not guaranteed UTC) — don't assume UTC when bucketing by day/week/month across sites.
 
 ## What NOT to do
 
@@ -136,6 +146,9 @@ Other industry-solution prefixes you may see: `PLUSC` (Calibration), `PLUST` (Tr
 - Don't assume the customer's open-status set matches Maximo defaults. Ask or consult the workspace glossary.
 - Don't fabricate column names that aren't in this document. If a customer mentions a custom field, ask if it's a standard extension column or something they added.
 - Don't conflate `WORKORDER.STATUS` (current) with `WOSTATUS.STATUS` (history). The #1 source of wrong answers.
+- Don't filter status on raw literals when the deployment has custom synonyms — resolve via `SYNONYMDOMAIN` (gotcha 5).
+- Don't assume closed/cancelled records are present — standard Maximo views filter `HISTORYFLAG = 0` (gotcha 6).
+- Don't assume datetimes are UTC — they're in the app-server timezone (gotcha 7).
 
 ## Composes with
 

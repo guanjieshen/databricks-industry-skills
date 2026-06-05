@@ -1,0 +1,10 @@
+{
+  "query": "show me our bad actor assets",
+  "expected_skill": "maximo-reliability",
+  "expected_behavior": [
+    "Loads maximo-reliability",
+    "Surfaces the 'bad actor' ambiguity BEFORE answering — asks which of the four valid framings the user means: top-N by failure count, by total downtime, by repair cost, or by criticality-weighted failure count",
+    "Does not silently pick one framing and return a final ranking",
+    "If the user picks the repair-cost framing, defers cost methodology to maximo-maintenance-cost"
+  ]
+}

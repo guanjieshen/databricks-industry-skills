@@ -1,8 +1,21 @@
 # Maximo PM Planning — Schema Reference
 
-For the **detailed `PM` table reference**, see [`../maximo-reliability/schema.md`](../maximo-reliability/schema.md). PM is the central table for both skills — documenting it once there and cross-referencing here avoids drift.
+For the **detailed `PM` table reference**, see [`../maximo-reliability/schema.md`](../maximo-reliability/schema.md). PM is the central table for both skills — documenting it once there and cross-referencing here avoids drift. Universal column semantics (SITEID composite keys, `STATUS` as a synonym domain, `HISTORYFLAG`, app-server-timezone datetimes) are owned by `maximo-overview`.
 
 This file focuses on the **planning-specific** tables and forward-looking columns.
+
+## Contents
+- Key columns on `PM` for forecasting
+- `PMSEQUENCE` — multi-frequency PMs
+- `JOBPLAN` — task template (org-scoped)
+- `JPLABOR` — planned labor on a template
+- `JPMATERIAL` — planned material on a template
+- `JPSERVICE` — planned contracted services
+- `JPSEGMENT` — job-plan steps / operations
+- `ASSETMETER` — meter-based PM forecasting
+- `LABOR` — craft availability (cross-ref)
+- `CALENDAR` / `WORKPERIOD` — shift schedules (deferred to labor-resources)
+- Cardinality summary
 
 ## Key columns on `PM` for forecasting
 
@@ -13,7 +26,9 @@ This file focuses on the **planning-specific** tables and forward-looking column
 | `NEXTDATE` | Calculated next due date |
 | `EXTDATE` | One-time override — always use `COALESCE(EXTDATE, NEXTDATE)` as effective due date |
 | `USETARGETDATE` | Fixed (TRUE) vs floating (FALSE) — affects next-cycle anchor |
-| `STATUS` | Only `ACTIVE` PMs forecast |
+| `STATUS` | Only active PMs forecast. Synonym domain `PMSTATUS` — stores the renamable `VALUE`, not internal `MAXVALUE`; resolve via `SYNONYMDOMAIN` if renamed (see `maximo-overview`) |
+| `ORGID` | Carried on `PM`; required to join the org-scoped `JOBPLAN`/`JP*` tables |
+| `METERNAME` | Runtime meter for meter-based PMs — FK to `ASSETMETER.METERNAME` |
 | `ALERTLEAD` | Days before NEXTDATE that the WO is generated |
 | `FREQUENCY` + `FREQUNIT` | Cadence (e.g. 30 DAYS, 500 HOURS) |
 | `LASTSTARTDATE` / `LASTCOMPDATE` | Last execution anchor — fixed uses LASTSTARTDATE, floating uses LASTCOMPDATE |
@@ -40,7 +55,9 @@ WHERE pm.__END_AT IS NULL
   AND pm.status = 'ACTIVE';
 ```
 
-## `JOBPLAN` — task template
+## `JOBPLAN` — task template (org-scoped)
+
+Job-plan templates and all their child tables (`JPLABOR`, `JPMATERIAL`, `JPSERVICE`, `JPSEGMENT`) key on `(JPNUM, ORGID)` — **org-scoped, not site-scoped**. Always join PM → JOBPLAN on `(JPNUM, ORGID)`. See gotcha 9.
 
 | Column | Notes |
 |---|---|
@@ -98,18 +115,30 @@ For very granular planning. Most analytics don't need to descend below `JOBPLAN`
 | `DURATION` | Step duration |
 | `JPLABORID` / `JPMATERIALID` | Optional FKs to specific labor / material lines |
 
+## `ASSETMETER` — meter-based PM forecasting
+
+Drives forecasts for meter-based PMs (`PM.FREQUNIT` in `HOURS`/`MILES`/`READINGS`). Keyed on `(ASSETNUM, SITEID, METERNAME)`.
+
+| Column | Notes |
+|---|---|
+| `ASSETNUM` / `SITEID` | FK to ASSET |
+| `METERNAME` | Meter identifier — match to `PM.METERNAME` for the runtime meter |
+| `LASTREADING` | Most recent meter value |
+| `LASTREADINGDATE` | When the last reading was taken |
+| `AVERAGE` | Maximo-computed rolling per-day consumption rate. NULL/0 on a new meter → forecast is unknowable (return NULL). See gotcha 8 |
+
 ## `LABOR` — for craft availability
 
 (Cross-referenced from `maximo-overview`.) Used to estimate available craft hours when balancing workload-vs-capacity.
 
-## `CALENDAR` / `WORKPERIOD` — shift schedules (where populated)
+## `CALENDAR` / `WORKPERIOD` — shift schedules (deferred to labor-resources)
 
 | Table | Notes |
 |---|---|
 | `CALENDAR` | Customer-defined working calendars |
 | `WORKPERIOD` | Specific work periods per calendar (shifts, days off, holidays) |
 
-These are **often half-populated** at real customers — `CALENDAR` may exist but `WORKPERIOD` rows may only cover a subset of weeks. Always check coverage before claiming workload-vs-capacity analysis is meaningful.
+These are **often half-populated** at real customers — `CALENDAR` may exist but `WORKPERIOD` rows may only cover a subset of weeks. Always check coverage before claiming workload-vs-capacity analysis is meaningful. The capacity/availability master (including `AVAILREFLY`) is **owned by `maximo-labor-resources`** — for capacity tables and the half-populated-coverage probe, compose with that skill rather than re-deriving them here.
 
 ## Cardinality summary
 
@@ -121,5 +150,7 @@ These are **often half-populated** at real customers — `CALENDAR` may exist bu
 | `JOBPLAN` → `JPMATERIAL` | 1 : N |
 | `JOBPLAN` → `JPSEGMENT` | 1 : N |
 | `WORKORDER` → `PM` | N : 1 (PM-generated WOs via `WORKORDER.PMNUM`) |
-| `WORKORDER` → `JOBPLAN` | N : 1 (via `WORKORDER.JPNUM`) |
+| `WORKORDER` → `JOBPLAN` | N : 1 (via `WORKORDER.JPNUM` + `ORGID`) |
+| `ASSET` → `ASSETMETER` | 1 : N (one row per meter on the asset) |
+| `PM` → `ASSETMETER` | N : 1 (via `PM.METERNAME` for meter-based PMs) |
 | `CALENDAR` → `WORKPERIOD` | 1 : N |

@@ -92,7 +92,7 @@ The robust pattern is the one IBM ships in the built-in `WORKVIEW` — filter on
 ```sql
 -- "Completed" work, synonym-safe (resolves every synonym of COMP / CLOSE):
 WHERE w.status IN (
-  SELECT value FROM {{maximo_catalog}}.{{maximo_schema}}.SYNONYMDOMAIN
+  SELECT value FROM :catalog.:silver_schema.SYNONYMDOMAIN
   WHERE domainid = 'WOSTATUS' AND maxvalue IN ('COMP','CLOSE')
 )
 ```

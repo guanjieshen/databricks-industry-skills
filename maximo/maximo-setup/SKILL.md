@@ -1,17 +1,21 @@
 ---
 name: maximo-setup
 description: |
-  Use to bootstrap a customer's Maximo workspace for Genie — PROFILES the Maximo
-  data first (distinct statuses/worktypes, sites, asset classes, custom columns,
-  which modules are used, industry), then interviews to confirm the gaps, then
-  generates a workspace-tier business-jargon glossary skill and registers Unity
-  Catalog table/column comments on the Maximo Silver layer. Run this ONCE per
-  workspace. Triggers on: "set up Maximo for Genie", "profile our Maximo data",
-  "set up our Maximo glossary", "configure Genie for our Maximo data", "Genie
-  doesn't know our business terms", "register Maximo schema comments".
+  Bootstraps a customer's IBM Maximo (Maximo, EAM, CMMS) workspace for Genie —
+  profiles the Maximo Silver layer first (distinct WORKORDER STATUS / WORKTYPE /
+  WOCLASS, SITEID list, ASSET CLASSSTRUCTUREID, custom/extension columns, which
+  modules are populated, PLUSG industry-solution presence, app-server timezone),
+  then interviews a Maximo SME to confirm the gaps (which statuses count as
+  "open", SYNONYMDOMAIN renamings, worktype mappings, business jargon), then
+  generates a workspace-tier business-glossary skill and registers Unity Catalog
+  table/column comments on the Maximo Silver tables. Runs ONCE per workspace.
+  Triggers on: "set up Maximo for Genie", "profile our Maximo data", "set up our
+  Maximo glossary", "configure Genie for our Maximo data", "Genie doesn't know
+  our business terms", "register Maximo schema comments", "map our Maximo
+  jargon".
 compatibility: Requires databricks CLI >= v0.294.0 (experimental aitools)
 metadata:
-  version: "0.1.0"
+  version: "0.2.0"
 parent: maximo-overview
 ---
 
@@ -48,13 +52,23 @@ Why both: the glossary handles **value-level and concept-level** mapping (jargon
 2. **Workspace customer name**: "What short name should we use for your organization in skill filenames?" (e.g. `enbridge`, `acme-energy`). This becomes part of the generated glossary skill name.
 3. **Output scope**: workspace-wide (admin) or user-scoped?
 
+## Questions to surface first
+
+These deployment-level ambiguities have NO defensible default and decide whether every downstream `maximo-*` skill is correct. Surface them up front (the full, profile-grounded version lives in [interview.md](interview.md)); never finalize the glossary by guessing them.
+
+1. **Which `STATUS` values count as "open" / backlog in this shop?** There is no universal set — every deployment defines its own (plus custom statuses like `WPCOND`, `NEEDREV`). The profiler proposes; only the SME confirms. This is the single most-reused fact across the family.
+2. **Has the customer renamed any status synonyms?** Status columns store the customer-renamable synonym (`SYNONYMDOMAIN.VALUE`), not the internal `MAXVALUE` Maximo logic uses — see [maximo-overview](../maximo-overview/) status-is-a-synonym-domain gotcha. If they have renamed values, the glossary must record the actual stored `VALUE` strings so generated SQL matches.
+3. **What timezone is the Maximo app server configured to?** Maximo stores datetimes in the app server's local TZ (often UTC, but that's a config choice, not a guarantee) — see [maximo-overview](../maximo-overview/) datetime gotcha. This skill OWNS capturing the deployment's actual TZ, because day/week/month bucketing across sites is wrong without it. Ask; do not assume UTC.
+4. **Which modules are run in Maximo vs. another system of record?** Empty/sparse indicator tables usually mean the process lives in SAP/Oracle/GIS — confirm before any skill treats those tables as authoritative.
+5. **What is the migration cutover date (if any)?** Pre-cutover WOs often carry null history / placeholder statuses; the glossary should record the cutover so trend metrics can exclude the gap.
+
 ## Workflow
 
 **Profile the data first, then interview to confirm the gaps, then generate.** Don't ask the customer what the data can already tell you.
 
 ### Phase 0 — Profile the data (automated first pass)
 
-Profile the schema and extract the data-provable facts — distinct `WOCLASS`/`STATUS`/`WORKTYPE`, the `SITEID` list, `ASSET.CLASSSTRUCTUREID` list, custom/extension columns, which modules are populated, PLUSG presence, and row/null stats — into a DRAFT for the interview. **Pick the path that matches how Genie Code is attached** (both produce the same facts):
+Profile the schema and extract the data-provable facts — distinct `WOCLASS`/`STATUS`/`WORKTYPE`, the `SITEID` list, `ASSET.CLASSSTRUCTUREID` list, custom/extension columns, which modules are populated, PLUSG presence, `SYNONYMDOMAIN` rows for status domains (to detect customer renamings — see [maximo-overview](../maximo-overview/) status gotcha), `HISTORYFLAG` distribution (to confirm closed/history records are present — see [maximo-overview](../maximo-overview/) HISTORYFLAG gotcha), and row/null stats — into a DRAFT for the interview. The app-server timezone is NOT data-provable; flag it for the interview (Question 3). **Pick the path that matches how Genie Code is attached** (both produce the same facts):
 
 **Path A — workspace / serverless compute (can run Python):** run the profiler script. (It builds on the [`data-exploration`](../../_common/data-exploration/) mechanics.)
 ```bash
@@ -172,6 +186,18 @@ Trigger a re-run on: new sites/asset classes/custom columns, or when the custome
 - **Never apply UC comments (or any change to existing tables) without explicit user approval** — run `apply_uc_comments.py` with no `--apply` to preview, show the statements, and only run `--apply` after they confirm. (Repo rule: writes to existing objects require explicit permission.)
 - Don't fabricate mappings if the customer doesn't know — write `_unknown_ — needs validation from <role>` and move on.
 - Don't ask the full interview at once. Batch 2–3 questions, accept the answers, then continue.
+- **Don't re-teach universal mechanics in the glossary or comments.** SITEID composite keys, `WOCLASS` filtering, `ISTASK` tasks-vs-child-WOs, status-is-a-synonym-domain (`SYNONYMDOMAIN`), `HISTORYFLAG`, and app-server-timezone datetimes are owned by [maximo-overview](../maximo-overview/) — capture the customer-specific *values* (their open set, their TZ, their renamed synonyms), not the mechanic itself.
+- **Don't author metric definitions here.** Capturing a KPI's stated definition during the interview is fine, but the certified formulas live with their owners: PM compliance / MTBF / MTTR / reactive-vs-proactive / schedule-compliance → [maximo-reliability](../maximo-reliability/); cost rollup / estimate-vs-actual / multi-currency → [maximo-maintenance-cost](../maximo-maintenance-cost/). Record the customer's definition in `kpis`; defer the SQL to the owner.
+
+## Composes with
+
+This foundation skill feeds every other `maximo-*` skill — they read the generated glossary and the UC comments it registers. Defer to the owners for domain depth:
+
+- **[maximo-overview](../maximo-overview/)** — baseline data model, module map, and all universal gotchas (SITEID, WOCLASS, ISTASK, SYNONYMDOMAIN status resolution, HISTORYFLAG, app-server timezone). Load first.
+- **[maximo-data-engineering](../maximo-data-engineering/)** — building the Silver/Gold layer this skill profiles (references the platform skill `databricks-spark-declarative-pipelines`).
+- **[maximo-data-quality](../maximo-data-quality/)** — completeness diagnostics; the interview's data-integrity findings (failure-report population, labor booking) feed here.
+- **[maximo-genie-space](../maximo-genie-space/)** — optional curated NL surface built *after* setup (references the platform skill `databricks-genie`).
+- **UC `ALTER TABLE` / `COMMENT ON` mechanics** → platform skill [`databricks-unity-catalog`](https://github.com/databricks-solutions/ai-dev-kit/tree/main/databricks-skills/databricks-unity-catalog); this skill provides the Maximo-specific comment content.
 
 ## References
 

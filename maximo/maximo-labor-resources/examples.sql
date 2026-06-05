@@ -1,8 +1,8 @@
 -- =============================================================================
 -- Maximo Labor & Resources — Gold-Standard Query Examples
 -- =============================================================================
--- Substitute {{catalog}}.{{silver_schema}}, {{catalog}}.{{gold_schema}},
--- {{catalog}}.{{metrics_schema}} before running.
+-- Substitute :catalog.:silver_schema, :catalog.:gold_schema,
+-- :catalog.:metrics_schema before running.
 -- =============================================================================
 
 
@@ -14,14 +14,14 @@ SELECT
     l.laborcode, l.orgid, l.craft,
     COALESCE(p.displayname, l.laborcode) AS name,
     qp.expirydate                                          AS cert_expiry
-FROM {{catalog}}.{{silver_schema}}.qualperson qp
-JOIN {{catalog}}.{{silver_schema}}.qualification q
+FROM :catalog.:silver_schema.qualperson qp
+JOIN :catalog.:silver_schema.qualification q
     ON q.qualificationid = qp.qualificationid AND q.status = 'ACTIVE'
-JOIN {{catalog}}.{{silver_schema}}.labor l
+JOIN :catalog.:silver_schema.labor l
     ON l.personid = qp.personid AND l.status = 'ACTIVE'
-LEFT JOIN {{catalog}}.{{silver_schema}}.person p
+LEFT JOIN :catalog.:silver_schema.person p
     ON p.personid = l.personid
-WHERE q.qualificationid = '{{qualification_id}}'
+WHERE q.qualificationid = ':qualification_id'
   AND qp.status = 'ACTIVE'
   AND (qp.expirydate IS NULL OR qp.expirydate > current_date())
 ORDER BY cert_expiry NULLS LAST;
@@ -38,13 +38,13 @@ SELECT
     q.description                                          AS qualification,
     qp.expirydate,
     datediff(DAY, current_date(), qp.expirydate)           AS days_until_expiry
-FROM {{catalog}}.{{silver_schema}}.qualperson qp
-JOIN {{catalog}}.{{silver_schema}}.qualification q
+FROM :catalog.:silver_schema.qualperson qp
+JOIN :catalog.:silver_schema.qualification q
     ON q.qualificationid = qp.qualificationid
-LEFT JOIN {{catalog}}.{{silver_schema}}.person p
+LEFT JOIN :catalog.:silver_schema.person p
     ON p.personid = qp.personid
 WHERE qp.status = 'ACTIVE'
-  AND qp.expirydate BETWEEN current_date() AND current_date() + INTERVAL {{days_ahead}} DAYS
+  AND qp.expirydate BETWEEN current_date() AND current_date() + INTERVAL :days_ahead DAYS
 ORDER BY qp.expirydate;
 
 
@@ -57,10 +57,10 @@ SELECT
     cap.week_starting,
     cap.craft,
     cap.available_hours
-FROM {{catalog}}.{{gold_schema}}.v_crew_capacity cap
+FROM :catalog.:gold_schema.v_crew_capacity cap
 WHERE cap.week_starting BETWEEN current_date()
-                            AND current_date() + INTERVAL {{weeks_ahead}} WEEKS
-  AND cap.crewid = '{{crewid}}'
+                            AND current_date() + INTERVAL :weeks_ahead WEEKS
+  AND cap.crewid = ':crewid'
 ORDER BY week_starting, craft;
 
 
@@ -82,8 +82,8 @@ SELECT
         WHEN wl.planned_labor_hours < COALESCE(SUM(cap.available_hours), 0) * 0.6 THEN 'UNDER'
         ELSE 'OK'
     END                                                     AS status
-FROM {{catalog}}.{{gold_schema}}.v_pm_workload_by_craft wl
-LEFT JOIN {{catalog}}.{{gold_schema}}.v_crew_capacity cap
+FROM :catalog.:gold_schema.v_pm_workload_by_craft wl
+LEFT JOIN :catalog.:gold_schema.v_crew_capacity cap
     ON cap.craft = wl.craft AND cap.week_starting = wl.week_starting
 WHERE wl.week_starting BETWEEN current_date()
                            AND current_date() + INTERVAL 90 DAYS
@@ -102,9 +102,9 @@ SELECT
     a.reftype                                              AS absence_type,
     a.startdatetime, a.enddatetime,
     a.hours                                                AS absence_hours
-FROM {{catalog}}.{{silver_schema}}.availrefly a
-JOIN {{catalog}}.{{silver_schema}}.labor l USING (laborcode, orgid)
-LEFT JOIN {{catalog}}.{{silver_schema}}.person p ON p.personid = l.personid
+FROM :catalog.:silver_schema.availrefly a
+JOIN :catalog.:silver_schema.labor l USING (laborcode, orgid)
+LEFT JOIN :catalog.:silver_schema.person p ON p.personid = l.personid
 WHERE a.startdatetime BETWEEN current_date()
                           AND current_date() + INTERVAL 90 DAYS
 ORDER BY a.startdatetime, l.craft;
@@ -120,8 +120,8 @@ SELECT
     SUM(lt.regularhrs + COALESCE(lt.premiumpayhours, 0))   AS total_hours,
     SUM(lt.linecost)                                       AS total_cost,
     COUNT(DISTINCT l.laborcode)                            AS distinct_resources
-FROM {{catalog}}.{{silver_schema}}.labtrans lt
-JOIN {{catalog}}.{{silver_schema}}.labor l USING (laborcode, orgid)
+FROM :catalog.:silver_schema.labtrans lt
+JOIN :catalog.:silver_schema.labor l USING (laborcode, orgid)
 WHERE lt.transtype = 'WORK'
   AND lt.startdate >= add_months(current_date(), -3)
 GROUP BY CASE WHEN l.vendor IS NOT NULL THEN 'CONTRACTOR' ELSE 'EMPLOYEE' END,
@@ -135,19 +135,19 @@ ORDER BY l.craft, labor_type;
 -- Trigger: "labor utilization", "is X overworked"
 WITH booked AS (
     SELECT lt.laborcode, SUM(lt.regularhrs + COALESCE(lt.premiumpayhours, 0)) AS booked_hours
-    FROM {{catalog}}.{{silver_schema}}.labtrans lt
-    WHERE lt.startdate BETWEEN '{{window_start}}' AND '{{window_end}}'
+    FROM :catalog.:silver_schema.labtrans lt
+    WHERE lt.startdate BETWEEN ':window_start' AND ':window_end'
       AND lt.transtype = 'WORK'
     GROUP BY lt.laborcode
 ),
 available AS (
     SELECT l.laborcode,
            SUM(wp.hours) AS available_hours
-    FROM {{catalog}}.{{silver_schema}}.labor l
-    JOIN {{catalog}}.{{silver_schema}}.workperiod wp
+    FROM :catalog.:silver_schema.labor l
+    JOIN :catalog.:silver_schema.workperiod wp
         ON wp.calnum = l.calnum AND wp.shiftnum = l.shiftnum
        AND wp.periodtype = 'WORK'
-       AND wp.startdate BETWEEN '{{window_start}}' AND '{{window_end}}'
+       AND wp.startdate BETWEEN ':window_start' AND ':window_end'
     GROUP BY l.laborcode
 )
 SELECT
@@ -172,10 +172,10 @@ SELECT
     l.craft, l.skilllevel,
     cl.position,
     cl.startdate                                           AS on_crew_since
-FROM {{catalog}}.{{silver_schema}}.crewlabor cl
-JOIN {{catalog}}.{{silver_schema}}.labor l USING (laborcode, orgid)
-LEFT JOIN {{catalog}}.{{silver_schema}}.person p ON p.personid = l.personid
-WHERE cl.crewid = '{{crewid}}'
+FROM :catalog.:silver_schema.crewlabor cl
+JOIN :catalog.:silver_schema.labor l USING (laborcode, orgid)
+LEFT JOIN :catalog.:silver_schema.person p ON p.personid = l.personid
+WHERE cl.crewid = ':crewid'
   AND cl.startdate <= current_date()
   AND (cl.enddate IS NULL OR cl.enddate > current_date())
 ORDER BY cl.position, cl.startdate;
@@ -190,10 +190,10 @@ SELECT
     pgt.respparty                                          AS member_personid,
     COALESCE(p.displayname, pgt.respparty)                 AS member_name,
     pgt.persongroupteamid                                  AS member_type
-FROM {{catalog}}.{{silver_schema}}.persongroupteam pgt
-LEFT JOIN {{catalog}}.{{silver_schema}}.person p
+FROM :catalog.:silver_schema.persongroupteam pgt
+LEFT JOIN :catalog.:silver_schema.person p
     ON p.personid = pgt.respparty
-WHERE pgt.persongroup = '{{persongroup}}'
+WHERE pgt.persongroup = ':persongroup'
 ORDER BY pgt.respparty;
 
 
@@ -201,6 +201,14 @@ ORDER BY pgt.respparty;
 -- 10. Open WO assignments for a specific labor (today's backlog)
 -- -----------------------------------------------------------------------------
 -- Trigger: "what's X working on today", "my assignments"
+-- NOTE (overview gotcha 5): WORKORDER.STATUS and ASSIGNMENT.STATUS are synonym
+--   domains. The literals below work in stock Maximo (internal==external); if
+--   the deployment added synonyms, resolve via SYNONYMDOMAIN, e.g.
+--   w.status NOT IN (SELECT value FROM :catalog.:silver_schema.synonymdomain
+--                    WHERE domainid = 'WOSTATUS' AND maxvalue IN ('COMP','CLOSE','CAN'))
+-- NOTE (overview gotcha 6): WORKORDER carries HISTORYFLAG; closed/cancelled WOs
+--   get HISTORYFLAG=1 and drop out of IBM-shipped views. Excluding final
+--   statuses (below) already removes them, but be aware if you widen the filter.
 SELECT
     a.wonum, a.siteid,
     w.description                                          AS wo_description,
@@ -208,10 +216,10 @@ SELECT
     a.scheddate, a.estdur,
     a.status                                               AS assignment_status,
     w.status                                               AS wo_status
-FROM {{catalog}}.{{silver_schema}}.assignment a
-JOIN {{catalog}}.{{silver_schema}}.workorder w
-    ON w.wonum = a.wonum AND w.siteid = a.siteid
-WHERE a.laborcode = '{{laborcode}}'
+FROM :catalog.:silver_schema.assignment a
+JOIN :catalog.:silver_schema.workorder w
+    ON w.wonum = a.wonum AND w.siteid = a.siteid          -- SITEID composite (gotcha 4)
+WHERE a.laborcode = ':laborcode'
   AND a.status IN ('NEW', 'ASSIGNED')
   AND w.status NOT IN ('COMP', 'CLOSE', 'CAN')
 ORDER BY a.scheddate;

@@ -1,8 +1,8 @@
 -- =============================================================================
 -- Maximo Maintenance Cost — Gold-Standard Query Examples
 -- =============================================================================
--- Substitute {{catalog}}.{{silver_schema}}, {{catalog}}.{{gold_schema}},
--- {{catalog}}.{{metrics_schema}} before running.
+-- Substitute :catalog.:silver_schema, :catalog.:gold_schema,
+-- :catalog.:metrics_schema before running.
 -- =============================================================================
 
 
@@ -10,15 +10,18 @@
 -- 1. Top assets by maintenance cost last year
 -- -----------------------------------------------------------------------------
 -- Trigger: "top assets by cost", "most expensive assets to maintain"
+-- v_asset_cost_summary is per-(asset, MONTH); aggregate the months of last year.
 SELECT
     s.assetnum, s.siteid, s.asset_description, s.asset_criticality,
-    s.total_cost,
-    s.total_labor_cost,
-    s.total_material_cost,
-    s.wo_count
-FROM {{catalog}}.{{gold_schema}}.v_asset_cost_summary s
-WHERE s.period_start = add_months(date_trunc('YEAR', current_date()), -12)
-ORDER BY s.total_cost DESC
+    SUM(s.total_cost)          AS total_cost,
+    SUM(s.total_labor_cost)    AS total_labor_cost,
+    SUM(s.total_material_cost) AS total_material_cost,
+    SUM(s.wo_count)            AS wo_count
+FROM :catalog.:gold_schema.v_asset_cost_summary s
+WHERE s.period_start >= date_trunc('YEAR', add_months(current_date(), -12))
+  AND s.period_start <  date_trunc('YEAR', current_date())
+GROUP BY s.assetnum, s.siteid, s.asset_description, s.asset_criticality
+ORDER BY total_cost DESC
 LIMIT 20;
 
 
@@ -28,12 +31,12 @@ LIMIT 20;
 -- Trigger: "PM vs CM cost", "preventive vs corrective spend ratio"
 SELECT
     siteid,
-    {{catalog}}.{{metrics_schema}}.pm_vs_cm_cost_ratio(
+    :catalog.:metrics_schema.pm_vs_cm_cost_ratio(
         siteid,
         add_months(current_timestamp(), -12),
         current_timestamp()
     ) AS pm_to_cm_cost_ratio
-FROM (SELECT DISTINCT siteid FROM {{catalog}}.{{silver_schema}}.workorder)
+FROM (SELECT DISTINCT siteid FROM :catalog.:silver_schema.workorder)
 WHERE siteid IS NOT NULL
 ORDER BY pm_to_cm_cost_ratio DESC NULLS LAST;
 
@@ -49,7 +52,7 @@ SELECT
     e.actual_cost,
     e.variance,
     e.variance_pct
-FROM {{catalog}}.{{gold_schema}}.v_wo_cost_enriched e
+FROM :catalog.:gold_schema.v_wo_cost_enriched e
 WHERE e.actfinish >= add_months(current_date(), -3)
   AND e.estimated_cost > 0
 ORDER BY ABS(e.variance) DESC
@@ -68,11 +71,11 @@ SELECT
     SUM(labor_cost + material_cost)           AS monthly_total_cost
 FROM (
     SELECT siteid, startdate AS transdate, linecost AS labor_cost, 0 AS material_cost
-    FROM {{catalog}}.{{silver_schema}}.labtrans
+    FROM :catalog.:silver_schema.labtrans
     WHERE transtype = 'WORK'
     UNION ALL
     SELECT siteid, transdate, 0, linecost
-    FROM {{catalog}}.{{silver_schema}}.matusetrans
+    FROM :catalog.:silver_schema.matusetrans
     WHERE issuetype IN ('ISSUE', 'RETURN')
 ) costs
 WHERE transdate >= add_months(current_date(), -12)
@@ -86,12 +89,12 @@ ORDER BY month, siteid;
 -- Trigger: "contractor spend", "vendor cost"
 SELECT
     c.company, c.name AS vendor_name,
-    {{catalog}}.{{metrics_schema}}.contractor_spend(
+    :catalog.:metrics_schema.contractor_spend(
         c.company,
         add_months(current_timestamp(), -3),
         current_timestamp()
     ) AS quarterly_spend
-FROM {{catalog}}.{{silver_schema}}.companies c
+FROM :catalog.:silver_schema.companies c
 WHERE c.type = 'V'
   AND c.disabled = 0
 ORDER BY quarterly_spend DESC NULLS LAST
@@ -113,7 +116,7 @@ SELECT
         100.0 * SUM(lt.premiumpayhours) / NULLIF(SUM(lt.regularhrs + lt.premiumpayhours), 0),
         2
     )                                                       AS premium_hours_pct
-FROM {{catalog}}.{{silver_schema}}.labtrans lt
+FROM :catalog.:silver_schema.labtrans lt
 WHERE lt.transtype = 'WORK'
   AND lt.startdate >= add_months(current_date(), -3)
 GROUP BY lt.craft
@@ -127,14 +130,14 @@ ORDER BY total_labor_cost DESC;
 -- Requires a runtime meter on each asset.
 SELECT
     a.assetnum, a.siteid, a.description,
-    {{catalog}}.{{metrics_schema}}.cost_per_operating_hour(
-        a.assetnum, a.siteid, '{{runtime_meter_name}}',
+    :catalog.:metrics_schema.cost_per_operating_hour(
+        a.assetnum, a.siteid, :runtime_meter_name,
         add_months(current_timestamp(), -12),
         current_timestamp()
     ) AS cost_per_operating_hour
-FROM {{catalog}}.{{silver_schema}}.asset a
+FROM :catalog.:silver_schema.asset a
 WHERE a.__END_AT IS NULL
-  AND a.criticality >= {{critical_threshold}}
+  AND a.criticality >= :critical_threshold
 ORDER BY cost_per_operating_hour DESC NULLS LAST
 LIMIT 25;
 
@@ -143,12 +146,15 @@ LIMIT 25;
 -- 8. Bad-actor cost ranking — assets ranked by cost × criticality
 -- -----------------------------------------------------------------------------
 -- Trigger: "bad actor cost", "criticality-weighted spend"
+-- v_asset_cost_summary is per-(asset, MONTH); aggregate last year first.
 SELECT
     s.assetnum, s.siteid, s.asset_description, s.asset_criticality,
-    s.total_cost,
-    s.total_cost * COALESCE(s.asset_criticality, 1) AS criticality_weighted_cost
-FROM {{catalog}}.{{gold_schema}}.v_asset_cost_summary s
-WHERE s.period_start = add_months(date_trunc('YEAR', current_date()), -12)
+    SUM(s.total_cost) AS total_cost,
+    SUM(s.total_cost) * COALESCE(s.asset_criticality, 1) AS criticality_weighted_cost
+FROM :catalog.:gold_schema.v_asset_cost_summary s
+WHERE s.period_start >= date_trunc('YEAR', add_months(current_date(), -12))
+  AND s.period_start <  date_trunc('YEAR', current_date())
+GROUP BY s.assetnum, s.siteid, s.asset_description, s.asset_criticality
 ORDER BY criticality_weighted_cost DESC
 LIMIT 20;
 
@@ -164,13 +170,18 @@ SELECT
     COUNT(DISTINCT w.wonum)                                AS failure_events,
     SUM(w.actlabcost + w.actmatcost)                       AS total_failure_cost,
     ROUND(AVG(w.actlabcost + w.actmatcost), 2)             AS avg_cost_per_failure
-FROM {{catalog}}.{{silver_schema}}.failurereport fr
-JOIN {{catalog}}.{{silver_schema}}.workorder w
+FROM :catalog.:silver_schema.failurereport fr
+JOIN :catalog.:silver_schema.workorder w
     ON w.wonum = fr.wonum AND w.siteid = fr.siteid
-LEFT JOIN {{catalog}}.{{silver_schema}}.failurecode fc
+LEFT JOIN :catalog.:silver_schema.failurecode fc
     ON fc.failurecode = fr.failurecode
 WHERE w.woclass = 'WORKORDER'
-  AND w.status IN ('COMP', 'CLOSE')
+  -- status resolved via SYNONYMDOMAIN (overview F2); no HISTORYFLAG filter so
+  -- closed/history records are included (overview F3).
+  AND w.status IN (
+      SELECT value FROM :catalog.:silver_schema.synonymdomain
+      WHERE domainid = 'WOSTATUS' AND maxvalue IN ('COMP', 'CLOSE')
+  )
   AND w.actfinish >= add_months(current_date(), -12)
 GROUP BY fr.failurecode, fc.description
 ORDER BY total_failure_cost DESC
@@ -190,7 +201,7 @@ SELECT
     b.budget_amount - COALESCE(actual.actual_amount, 0)  AS remaining,
     ROUND(100.0 * COALESCE(actual.actual_amount, 0) / NULLIF(b.budget_amount, 0), 1)
                                                           AS pct_spent
-FROM {{catalog}}.{{customer_budget_table}} b
+FROM :catalog.:customer_budget_table b
 LEFT JOIN (
     SELECT
         siteid,
@@ -198,10 +209,10 @@ LEFT JOIN (
         SUM(linecost)   AS actual_amount
     FROM (
         SELECT siteid, startdate AS transdate, linecost
-        FROM {{catalog}}.{{silver_schema}}.labtrans
+        FROM :catalog.:silver_schema.labtrans
         UNION ALL
         SELECT siteid, transdate, linecost
-        FROM {{catalog}}.{{silver_schema}}.matusetrans
+        FROM :catalog.:silver_schema.matusetrans
         WHERE issuetype IN ('ISSUE', 'RETURN')
     ) all_costs
     GROUP BY siteid, YEAR(transdate)

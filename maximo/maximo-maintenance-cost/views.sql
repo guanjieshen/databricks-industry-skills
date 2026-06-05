@@ -1,7 +1,21 @@
 -- =============================================================================
 -- Maximo Maintenance Cost — Gold Views
 -- =============================================================================
--- Substitute {{catalog}}.{{silver_schema}} and {{catalog}}.{{gold_schema}}.
+-- Substitute :catalog.:silver_schema and :catalog.:gold_schema.
+--
+-- Universal mechanics applied here (owned by maximo-overview — see that skill):
+--   * SITEID composite keys: every WO/asset/location/trans join is on SITEID (F1).
+--   * WOCLASS = 'WORKORDER' for normal WO cost (F9). v_wo_cost_enriched assumes
+--     this is already filtered at Silver; if not, add WHERE woclass='WORKORDER'.
+--   * Status is a synonym domain (F2): these views do NOT hard-filter status, so
+--     they include in-flight and closed WOs. When you DO filter for "completed
+--     cost", resolve COMP/CLOSE via SYNONYMDOMAIN, not literals.
+--   * HISTORYFLAG (F3): completed cost lives in closed/history records — do NOT
+--     filter HISTORYFLAG=0 here.
+--   * Datetimes are app-server-timezone (F4): date_trunc buckets use that TZ.
+-- These views attribute spend by TRANSACTION date (LABTRANS.STARTDATE /
+-- MATUSETRANS.TRANSDATE), which correctly captures post-close Edit-History
+-- appends (F13).
 -- =============================================================================
 
 
@@ -10,7 +24,7 @@
 -- WORKORDER + asset + location + derived total cost + variance flags.
 -- One row per WO (already filtered to WOCLASS = WORKORDER at Silver).
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE VIEW {{catalog}}.{{gold_schema}}.v_wo_cost_enriched
+CREATE OR REPLACE VIEW :catalog.:gold_schema.v_wo_cost_enriched
 COMMENT 'Per-WO cost view with asset/location context, total/labor/material split, variance vs estimate. One row per WO.'
 AS
 SELECT
@@ -60,10 +74,10 @@ SELECT
                + COALESCE(w.estservcost, 0) + COALESCE(w.esttoolcost, 0))
         ELSE NULL
     END                                           AS variance_pct
-FROM {{catalog}}.{{silver_schema}}.workorder w
-LEFT JOIN {{catalog}}.{{silver_schema}}.asset a
+FROM :catalog.:silver_schema.workorder w
+LEFT JOIN :catalog.:silver_schema.asset a
     ON a.assetnum = w.assetnum AND a.siteid = w.siteid AND a.__END_AT IS NULL
-LEFT JOIN {{catalog}}.{{silver_schema}}.locations l
+LEFT JOIN :catalog.:silver_schema.locations l
     ON l.location = w.location AND l.siteid = w.siteid AND l.__END_AT IS NULL;
 
 
@@ -72,7 +86,7 @@ LEFT JOIN {{catalog}}.{{silver_schema}}.locations l
 -- Per-(asset, period) cost rollup. Aggregates LABTRANS + MATUSETRANS to the
 -- asset grain. Period = month.
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE VIEW {{catalog}}.{{gold_schema}}.v_asset_cost_summary
+CREATE OR REPLACE VIEW :catalog.:gold_schema.v_asset_cost_summary
 COMMENT 'Per-(asset, month) cost rollup. One row per (asset, period_start). Aggregates labor + material from LABTRANS/MATUSETRANS via WO join.'
 AS
 WITH labor_costs AS (
@@ -82,8 +96,8 @@ WITH labor_costs AS (
         date_trunc('MONTH', lt.startdate)        AS period_start,
         SUM(lt.linecost)                          AS labor_cost,
         COUNT(DISTINCT lt.wonum)                  AS labor_wo_count
-    FROM {{catalog}}.{{silver_schema}}.labtrans lt
-    JOIN {{catalog}}.{{silver_schema}}.workorder w
+    FROM :catalog.:silver_schema.labtrans lt
+    JOIN :catalog.:silver_schema.workorder w
         ON w.wonum = lt.wonum AND w.siteid = lt.siteid
     WHERE lt.transtype = 'WORK'
       AND w.assetnum IS NOT NULL
@@ -98,8 +112,8 @@ material_costs AS (
           - SUM(CASE WHEN mt.issuetype = 'RETURN' THEN mt.linecost ELSE 0 END)
                                                   AS material_cost,
         COUNT(DISTINCT mt.wonum)                  AS material_wo_count
-    FROM {{catalog}}.{{silver_schema}}.matusetrans mt
-    JOIN {{catalog}}.{{silver_schema}}.workorder w
+    FROM :catalog.:silver_schema.matusetrans mt
+    JOIN :catalog.:silver_schema.workorder w
         ON w.wonum = mt.wonum AND w.siteid = mt.siteid
     WHERE mt.issuetype IN ('ISSUE', 'RETURN')
       AND w.assetnum IS NOT NULL
@@ -121,7 +135,7 @@ FULL OUTER JOIN material_costs mc
     ON lc.assetnum = mc.assetnum
    AND lc.siteid = mc.siteid
    AND lc.period_start = mc.period_start
-LEFT JOIN {{catalog}}.{{silver_schema}}.asset a
+LEFT JOIN :catalog.:silver_schema.asset a
     ON a.assetnum = COALESCE(lc.assetnum, mc.assetnum)
    AND a.siteid   = COALESCE(lc.siteid, mc.siteid)
    AND a.__END_AT IS NULL;
@@ -131,7 +145,7 @@ LEFT JOIN {{catalog}}.{{silver_schema}}.asset a
 -- v_cost_by_worktype
 -- Per-(site, worktype, month) cost rollup. Use for PM-vs-CM cost analysis.
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE VIEW {{catalog}}.{{gold_schema}}.v_cost_by_worktype
+CREATE OR REPLACE VIEW :catalog.:gold_schema.v_cost_by_worktype
 COMMENT 'Per-(site, worktype, month) cost rollup. Combines labor + material from transaction tables.'
 AS
 WITH labor_by_wt AS (
@@ -141,8 +155,8 @@ WITH labor_by_wt AS (
         CASE WHEN w.pmnum IS NOT NULL THEN 'PM' ELSE 'NON_PM' END AS pm_source,
         date_trunc('MONTH', lt.startdate)        AS period_start,
         SUM(lt.linecost)                          AS labor_cost
-    FROM {{catalog}}.{{silver_schema}}.labtrans lt
-    JOIN {{catalog}}.{{silver_schema}}.workorder w
+    FROM :catalog.:silver_schema.labtrans lt
+    JOIN :catalog.:silver_schema.workorder w
         ON w.wonum = lt.wonum AND w.siteid = lt.siteid
     WHERE lt.transtype = 'WORK'
     GROUP BY w.siteid, w.worktype,
@@ -157,8 +171,8 @@ mat_by_wt AS (
         date_trunc('MONTH', mt.transdate)        AS period_start,
         SUM(CASE WHEN mt.issuetype = 'ISSUE'  THEN mt.linecost ELSE 0 END)
           - SUM(CASE WHEN mt.issuetype = 'RETURN' THEN mt.linecost ELSE 0 END) AS material_cost
-    FROM {{catalog}}.{{silver_schema}}.matusetrans mt
-    JOIN {{catalog}}.{{silver_schema}}.workorder w
+    FROM :catalog.:silver_schema.matusetrans mt
+    JOIN :catalog.:silver_schema.workorder w
         ON w.wonum = mt.wonum AND w.siteid = mt.siteid
     WHERE mt.issuetype IN ('ISSUE', 'RETURN')
     GROUP BY w.siteid, w.worktype,
@@ -190,18 +204,18 @@ FULL OUTER JOIN mat_by_wt m
 -- If LOCANCESTOR is missing in the customer's environment, fall back to the
 -- v_asset_cost_summary (one level — asset only) and document the limitation.
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE VIEW {{catalog}}.{{gold_schema}}.v_location_cost_summary
+CREATE OR REPLACE VIEW :catalog.:gold_schema.v_location_cost_summary
 COMMENT 'Per-(rollup_location, month) maintenance cost rollup using LOCANCESTOR. Each asset cost row appears under every ancestor location in its physical hierarchy. Composes with maximo-asset-hierarchy. SYSTEMID = PRIMARY.'
 AS
 WITH asset_costs AS (
     SELECT
         s.assetnum, s.siteid, s.period_start,
         s.total_labor_cost, s.total_material_cost, s.total_cost
-    FROM {{catalog}}.{{gold_schema}}.v_asset_cost_summary s
+    FROM :catalog.:gold_schema.v_asset_cost_summary s
 ),
 asset_locations AS (
     SELECT a.assetnum, a.siteid, a.location, a.classstructureid
-    FROM {{catalog}}.{{silver_schema}}.asset a
+    FROM :catalog.:silver_schema.asset a
     WHERE a.__END_AT IS NULL
 )
 SELECT
@@ -217,8 +231,8 @@ SELECT
 FROM asset_costs ac
 JOIN asset_locations al
     ON al.assetnum = ac.assetnum AND al.siteid = ac.siteid
-JOIN {{catalog}}.{{silver_schema}}.locancestor la
+JOIN :catalog.:silver_schema.locancestor la
     ON la.location = al.location AND la.siteid = al.siteid AND la.systemid = 'PRIMARY'
-LEFT JOIN {{catalog}}.{{silver_schema}}.locations a_loc
+LEFT JOIN :catalog.:silver_schema.locations a_loc
     ON a_loc.location = la.ancestor AND a_loc.siteid = la.siteid AND a_loc.__END_AT IS NULL
 GROUP BY la.ancestor, ac.siteid, ac.period_start, a_loc.description, a_loc.type;

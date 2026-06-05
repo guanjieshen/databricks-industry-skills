@@ -4,7 +4,7 @@
 
 - 1. Closure tables vs naïve PARENT self-joins
 - 2. `LOCHIERARCHY.SYSTEMID` filtering
-- 3. `SITEID` propagation in cross-site queries
+- 3. `SITEID` propagation — the hierarchy-specific twist (universal rule owned by maximo-overview)
 - 4. Closure tables may be missing — recursive CTE fallback
 - 5. Physical hierarchy ≠ classification hierarchy
 - 6. Self-inclusion convention varies (does ancestor include self?)
@@ -54,21 +54,21 @@ WHERE lh.location = 'STN-04' AND lh.systemid = 'PRIMARY';
 
 Workspace glossary should specify the customer's hierarchy system convention.
 
-## 3. `SITEID` propagation in cross-site queries
+## 3. `SITEID` propagation — the hierarchy-specific twist
 
-Closure tables are still site-scoped. `LOCANCESTOR` rows have `SITEID`. Without filtering, multi-site customers get a cross-product.
+The SITEID composite-key rule is universal and owned by `maximo-overview` (don't re-derive it). The hierarchy-specific twist: a rollup query has **two** joins to thread `SITEID` through — the closure JOIN (`LOCANCESTOR`/`ASSETANCESTOR`) *and* the metric JOIN (workorder/asset/cost). Dropping it on either side cross-products. `LOCANCESTOR` rows carry `SITEID`; so does the metric table.
 
 ```sql
--- WRONG for multi-site customer
-SELECT la.location FROM locancestor la
-WHERE la.ancestor = 'STN-04';
-
--- RIGHT
-SELECT la.location FROM locancestor la
-WHERE la.ancestor = 'STN-04' AND la.siteid = '<your-siteid>';
+-- RIGHT — SITEID on BOTH the closure join and the metric join
+SELECT la.ancestor, COUNT(*)
+FROM :catalog.:silver_schema.locancestor la
+JOIN :catalog.:silver_schema.workorder w
+    ON w.location = la.location AND w.siteid = la.siteid   -- metric join
+WHERE la.ancestor = 'STN-04'
+  AND la.siteid   = '<your-siteid>'                        -- closure filter
+  AND la.systemid = 'PRIMARY'
+GROUP BY la.ancestor;
 ```
-
-For cross-site queries, **explicitly** join site → ancestor pairs; don't drop the column.
 
 ## 4. Closure tables may be missing — recursive CTE fallback
 

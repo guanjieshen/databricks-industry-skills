@@ -19,6 +19,26 @@ To use this template:
 This template intentionally covers the high-volume / high-value tables. Add
 similar declarations for additional MBOs (PM, JOBPLAN, COMPANIES, etc.) as
 needed.
+
+Contents (Silver modeling pattern per MBO):
+    Work management : WORKORDER (apply-changes, WOCLASS-filtered) +
+                      workorder_all_classes, WOSTATUS (append), LABTRANS (append),
+                      ASSIGNMENT (apply-changes)
+    Asset / loc     : ASSET (SCD2), LOCATIONS (SCD2), location_hierarchy (MV),
+                      LOCHIERARCHY / LOCANCESTOR / ASSETANCESTOR (closure MVs),
+                      SYSTEM / CLASSSTRUCTURE / CLASSSPEC (MV), ASSETSPEC (apply-changes)
+    Meters          : ASSETMETER (SCD2), METERREADING (append)
+    PM / failure    : PM (SCD2), FAILUREREPORT (append), FAILURECODE (MV)
+    Labor master    : LABOR (SCD2), PERSON (SCD2), CRAFT (MV), LABORCRAFTRATE (SCD2),
+                      QUALIFICATION / CERTIFICATION (MV), QUALPERSON (SCD2),
+                      CREW / CREWLABOR (SCD2), PERSONGROUP / CALENDAR (MV),
+                      WORKPERIOD / AVAILREFLY (append)
+
+Universal Maximo mechanics applied here (owned by maximo-overview, do not
+re-teach): SITEID is part of every apply-changes/SCD2 key; HISTORYFLAG closed
+records are mirrored in full (never filtered at Silver); status columns are
+passed through raw so consumers resolve via SYNONYMDOMAIN; datetimes are
+app-server-local, so the chosen `sequence_by` column must order reliably.
 """
 from __future__ import annotations
 
@@ -255,6 +275,22 @@ def failurereport():
 )
 def failurecode():
     return bronze("failurecode")
+
+
+# =============================================================================
+# SYNONYMDOMAIN — Materialized View (slow-changing reference)
+# Required for resolving status sets in Gold views: status columns store the
+# customer-renamable synonym (VALUE), not the internal MAXVALUE Maximo logic
+# uses. See maximo-overview. gold_views.sql joins this to resolve WOSTATUS sets.
+# =============================================================================
+
+@dlt.table(
+    name="synonymdomain",
+    comment="Silver SYNONYMDOMAIN — synonym domain reference (DOMAINID, MAXVALUE, VALUE). Used to resolve status sets without hard-coding literals.",
+    table_properties={"quality": "silver"},
+)
+def synonymdomain():
+    return bronze("synonymdomain")
 
 
 # =============================================================================

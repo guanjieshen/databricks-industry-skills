@@ -12,8 +12,9 @@
   - `plusgincperson` — Persons involved in incidents
   - `plusgoperaction` — Operator-recorded actions
 - Core Maximo tables used by HSE
-  - `INCIDENT`
+  - `TICKET` / Incident (CLASS='INCIDENT')
   - `INVESTIGATION`
+  - LOTO (Lock Out Tag Out) Plan
   - `MOC` (Management of Change)
   - `ACTION` (sometimes `WORKORDER` with `WOCLASS = 'ACTION'`)
 - Common joins
@@ -23,6 +24,8 @@
 - Cardinality summary
 
 For the universal Maximo schema, see `maximo-overview/SKILL.md`. This skill focuses on the PLUSG O&G industry-solution tables and HSE workflows.
+
+> **PHYSICAL COLUMN NAMES — READ FIRST.** IBM does NOT publish a per-column data dictionary for `PLUSG*` tables (the docs page only directs you to query `MAXATTRIBUTE WHERE objectname LIKE 'PLUSG%'`). The column names below are derived from the IBM MAS Performance Wiki's recommended-index DDL — the best public source — and MUST be confirmed against `MAXATTRIBUTE` in THIS deployment before shipping. Where a column was not visible in any source, it is flagged as unverified.
 
 ## PLUSG (O&G industry solution) tables
 
@@ -42,22 +45,25 @@ The full inventory of PLUSG tables referenced by HSE workflows (per the IBM MAS 
 
 ### `plusgpermitwork` — Permit to Work records
 
+Physical columns confirmed from the MAS Performance Wiki index DDL: `PTWCLASS`, `SITEID`, `ORGID`, `PERMITWORKNUM`, `STATUS`, `PLUSGPERTYPEID`, `DESCRIPTION`.
+
 | Column | Notes |
 |---|---|
-| `PERMITNUM` | Permit identifier |
-| `SITEID` | Composite with PERMITNUM |
-| `PERMITTYPE` | FK to `plusgpertype` |
-| `STATUS` | DRAFT, APPROVED, ISSUED, ACTIVE, CLOSED, CANCELLED |
-| `STARTDATE` | Permit validity start |
-| `ENDDATE` | Permit validity end (statutory deadline) |
-| `WONUM` | FK to WORKORDER (the work this permit covers) |
-| `SITEID` | Composite with WONUM |
-| `LOCATION` | Where the permitted work happens |
-| `ISSUEDBY` / `ISSUEDDATE` | Authorization audit trail |
+| `PERMITWORKNUM` | **Permit identifier** (verified). NOT `PERMITNUM`. |
+| `SITEID` / `ORGID` | Composite with `PERMITWORKNUM` (apply overview F1). |
+| `PTWCLASS` | Permit-work class discriminator (appears in multiple indexes). |
+| `PLUSGPERTYPEID` | **FK to `plusgpertype`** (its surrogate PK). NOT a column named `PERMITTYPE`. |
+| `STATUS` | PTW-specific status (the skill's `DRAFT/APPROVED/ISSUED/ACTIVE/CLOSED/CANCELLED` are likely customer synonyms). Resolve via the PTW status domain — confirm the exact `domainid` in `DOMAIN`/`SYNONYMDOMAIN` (was NOT publicly named; candidates like `PTWSTATUS` are inferred only). PTW also carries its own `HISTORYFLAG`. |
+| `DESCRIPTION` | Free-text permit description (verified, indexed). |
+| `WONUM` / `LOCATION` / `STARTDATE` / `ENDDATE` / `ISSUEDBY` / `ISSUEDDATE` | **Unverified** — these are conceptually expected (work covered, validity window, authorization audit) but were NOT in the published index DDL. Confirm against `MAXATTRIBUTE` before use. |
+
+> PTW has its OWN `STATUS` and OWN `HISTORYFLAG`; it is a work-control object, NOT a WORKORDER. Its status HISTORY lives in the PTW object's own status-history mechanism (analogous to TKSTATUS for tickets / WOSTATUS for work orders), NOT in `WOSTATUS`. See gotchas.md.
 
 ### `plusgpertype` — Permit & Certificate Type catalog
 
-The **type catalog** — distinct from transactional `plusgpermitwork` records. Used by:
+The **type catalog** — distinct from transactional `plusgpermitwork` records. Physical key columns (from the MAS Performance Wiki index DDL): business code column `PERTYPENUM`, surrogate PK `PLUSGPERTYPEID`. The PK is `PLUSGPERTYPEID`, NOT `PERTYPE`. `plusgpermitwork` joins to this catalog via `plusgpertype.plusgpertypeid = plusgpermitwork.plusgpertypeid`.
+
+Used by:
 - Permit to Work (PTW)
 - Isolation Management
 - Certifications
@@ -107,11 +113,15 @@ Bidirectional link table for relating records across modules:
 - INCIDENT ↔ INVESTIGATION
 - WORKORDER ↔ plusgpermitwork (a permit covers a WO)
 
-Schema: `RECORDKEY`, `RECORDCLASS`, `RELATEDRECKEY`, `RELATEDRECCLASS`, `RELATIONSHIP`.
+Verified physical key columns (from MAS Performance Wiki indexes): `RECORDKEY`, `CLASS` (the source-side class column — NOT `RECORDCLASS`), `RELATEDRECKEY`, `RELATEDRECCLASS`. The link is keyed `(recordkey, class) <-> (relatedreckey, relatedrecclass)`, mirroring core Maximo's `RELATEDRECORD` object (system-level, no key attributes, maintains the reciprocal row). `RECORDKEY` already encodes the composite business-key value, so the link is keyed on `RECORDKEY`+`CLASS`, not a separate `siteid` join column.
+
+A relationship/type column was NOT visible in the published indexes. Core `RELATEDRECORD` uses `RELATETYPE` (values like `FOLLOWUP`/`ORIGINATOR`/`RELATED`), NOT a column named `RELATIONSHIP`. Verify whether `plusgrelatedrec` carries an analogous `RELATETYPE` column in `MAXATTRIBUTE`; a column literally named `PLUSGRELATEDRECID` was NOT found in any source — do not assert it without deployment verification.
 
 ### `plusgincperson` — Persons involved in incidents
 
-Links incidents to people. **PII-sensitive** — handle with care. Schema typically: `INCIDENTID`, `PERSONID`, `ROLE` (witness, injured-party, supervisor), `INJURYTYPE`, `INJURYCLASSIFICATION`.
+Links incidents to people. **PII-sensitive** — handle with care. The MAS Performance Wiki's sole recommended index for `plusgincperson` is on `TICKETID` — so the join column to the incident is **`TICKETID`**, NOT `INCIDENTID`. This is consistent with incidents being TICKET-class records (surrogate key `TICKETID`); see the TICKET/INCIDENT section below.
+
+IBM's incident docs confirm the conceptual fields (a "Persons Impacted by Incident" table; a "Person Role" field with value `Injured/Ill`; multiple illnesses/injuries and multiple outcomes per person) but do NOT publish the physical column names. So `PERSONID`/`ROLE`/`INJURYTYPE`/`INJURYCLASSIFICATION` are **conceptual/UNVERIFIED** — read the exact attribute names (e.g. `PERSONID` vs `PERSONUID`, the role/injury columns) from `MAXATTRIBUTE` in the deployment. The only verified column is `TICKETID`.
 
 ### `plusgoperaction` — Operator-recorded actions
 
@@ -119,21 +129,31 @@ Field-recorded actions tied to work or incidents.
 
 ## Core Maximo tables used by HSE
 
-### `INCIDENT`
+### `TICKET` / Incident (CLASS='INCIDENT')
 
-The incident master table. Columns vary by Maximo version; common ones:
-- `INCIDENTID` — primary key
-- `SITEID` — composite
-- `REPORTDATE` — when reported
-- `INCIDENTCATEGORY` — recordable, near-miss, first-aid, etc.
-- `STATUS` — REPORTED, INVESTIGATING, CLOSED
-- `SEVERITY` — severity classification
-- `ASSETNUM` — asset involved (if any)
-- `LOCATION` — where it happened
+**There is no standalone `INCIDENT` table.** SR, INCIDENT, and PROBLEM all share the core `TICKET` table; the three applications are views distinguished by `TICKET.CLASS` (values `SR` / `INCIDENT` / `PROBLEM`). The "Incident Class" field is populated with the class (e.g. `Incident` or `Service Request`). The surrogate key is `TICKETID` — which is why `plusgincperson` keys on `TICKETID`. Filter `CLASS='INCIDENT'` for incident analytics.
+
+Because incidents are TICKET records they are subject to **`HISTORYFLAG`**: at CLOSED/CANCELLED/REJECTED a ticket gets `HISTORYFLAG=1` and drops off the List tab (apply overview F3). Incident status resolves via `SYNONYMDOMAIN WHERE domainid='INCIDENTSTATUS'` — each ticket class has its OWN synonym domain (`SRSTATUS` / `INCIDENTSTATUS` / `PROBLEMSTATUS`). The stock `INCIDENTSTATUS` value set is `NEW` / `QUEUED` / `PENDING` / `INPROG` / `RESOLVED` / `CLOSED` (apply overview F2).
+
+Common / conceptual columns:
+- `TICKETID` — surrogate primary key (verified).
+- `CLASS` — `SR` / `INCIDENT` / `PROBLEM`. Filter `='INCIDENT'`.
+- `SITEID` / `ORGID` — composite-key participants.
+- `STATUS` — synonym value; resolve via `SYNONYMDOMAIN` (domainid `INCIDENTSTATUS`). The skill's old `REPORTED/INVESTIGATING/CLOSED` literals do NOT match the stock set — treat as customer synonyms, do not hardcode.
+- `HISTORYFLAG` — `1` once final-status; standard views filter `=0`.
+- `REPORTDATE` — when reported (app-server TZ; apply overview F4).
+- `ASSETNUM` / `LOCATION` — asset / where it happened.
+- `INCIDENTCATEGORY`, `SEVERITY` — **UNVERIFIED stock column names.** Category/severity and any recordable/Tier classification are typically driven by `CLASSIFICATION` (`CLASSSTRUCTUREID`) or a configurable value list, NOT a fixed stock column. Confirm in `MAXATTRIBUTE` / the workspace glossary (see gotchas).
 
 ### `INVESTIGATION`
 
 Per-incident investigation record. Columns: `INVESTIGATIONID`, `INCIDENTID`, root cause findings, corrective actions.
+
+### LOTO (Lock Out Tag Out) Plan
+
+The **Lock Out Tag Out Plan** application (part of Lock Management in the Planning module) holds reusable locking/unlocking-sequence templates applied on PTW / Isolation records. The plan record uses an **`ACTIVE`** field, NOT a `STATUS` field ("The Active field is used to identify plan records which are available for use"). See gotchas.md — there is no LOTO status nor status-history.
+
+The exact physical table name is not published; it is a `PLUSG`-prefixed Lock/LOTO object. Verify via `MAXATTRIBUTE WHERE objectname LIKE 'PLUSG%LOCK%'` or `'PLUSG%LOTO%'` in the deployment. Lock boxes / locks / seals / keys are managed by the separate **Lock Management** application, not the LOTO Plan object.
 
 ### `MOC` (Management of Change)
 
@@ -148,23 +168,29 @@ Corrective actions arising from incidents. Each action has owner, due-date, stat
 ### Open permits with their covered work
 
 ```sql
-SELECT p.permitnum, p.permittype, p.status, p.enddate,
-       w.wonum, w.description, a.assetnum, a.description AS asset_desc
+-- PERMITWORKNUM (not permitnum); join type catalog on PLUSGPERTYPEID.
+-- WONUM on plusgpermitwork is unverified — confirm in MAXATTRIBUTE before relying on it.
+SELECT p.permitworknum, pt.pertypenum, p.status, p.description,
+       w.wonum, w.description AS wo_desc, a.assetnum, a.description AS asset_desc
 FROM plusgpermitwork p
+LEFT JOIN plusgpertype pt ON pt.plusgpertypeid = p.plusgpertypeid
 LEFT JOIN workorder w ON w.wonum = p.wonum AND w.siteid = p.siteid
 LEFT JOIN asset a ON a.assetnum = w.assetnum AND a.siteid = w.siteid AND a.__END_AT IS NULL
-WHERE p.status IN ('ISSUED', 'ACTIVE');
+WHERE p.status IN ('ISSUED', 'ACTIVE');  -- resolve via PTW status domain; literals are likely synonyms
 ```
 
 ### Incidents linked to specific WOs / assets
 
 ```sql
-SELECT i.*, rr.recordkey AS related_wonum
-FROM incident i
+-- Incidents are TICKET rows (CLASS='INCIDENT'); join plusgrelatedrec on TICKETID.
+-- The source-side class column is CLASS (not recordclass).
+SELECT i.ticketid, rr.recordkey AS related_wonum
+FROM ticket i
 JOIN plusgrelatedrec rr
-    ON rr.relatedreckey = i.incidentid
+    ON rr.relatedreckey = i.ticketid
    AND rr.relatedrecclass = 'INCIDENT'
-   AND rr.recordclass = 'WORKORDER';
+   AND rr.class = 'WORKORDER'
+WHERE i.class = 'INCIDENT';
 ```
 
 ### Corrective actions still open from incidents
@@ -181,9 +207,9 @@ WHERE a.woclass = 'ACTION'
 
 | Relationship | Cardinality |
 |---|---|
-| `plusgpermitwork` → `WORKORDER` | N : 1 (a permit covers one primary WO) |
-| `plusgpermitwork` → `plusgpertype` | N : 1 |
-| `INCIDENT` → `plusgincperson` | 1 : N |
-| `INCIDENT` → `INVESTIGATION` | 1 : 0..1 |
-| `plusgrelatedrec` | bidirectional link, M : N effectively |
-| `INCIDENT` → `ACTION` (via parent or plusgrelatedrec) | 1 : N |
+| `plusgpermitwork` → `WORKORDER` | N : 1 (a permit covers one primary WO) — `WONUM` on permit is unverified |
+| `plusgpermitwork.plusgpertypeid` → `plusgpertype.plusgpertypeid` | N : 1 |
+| `TICKET (CLASS='INCIDENT')` → `plusgincperson` (on `TICKETID`) | 1 : N |
+| `TICKET (CLASS='INCIDENT')` → `INVESTIGATION` | 1 : 0..1 |
+| `plusgrelatedrec` `(recordkey,class) <-> (relatedreckey,relatedrecclass)` | bidirectional link, M : N effectively |
+| `TICKET (CLASS='INCIDENT')` → `ACTION` (via plusgrelatedrec) | 1 : N |

@@ -1,111 +1,50 @@
 -- =============================================================================
 -- Maximo Gold Views — reusable analytical surface
 -- =============================================================================
+-- Contents:
+--   v_workorder_enriched        WORKORDER + current ASSET + current LOCATIONS + age
+--   v_workorder_status_history  WOSTATUS unpacked with time-in-state
+--   v_labor_actuals             LABTRANS aggregated to WO grain
+--   v_failure_events            completed WOs with coded failure data
+--   v_pm_schedule               PM master + next-due age
+--
 -- These views are the canonical consumption layer. Downstream skills
 -- (maximo-work-orders, maximo-reliability, maximo-integrity, maximo-hse,
--- Genie Spaces, AI/BI dashboards) all compose against these.
+-- Genie Agents, AI/BI dashboards) all compose against these.
 --
--- Substitute {{catalog}}.{{silver_schema}} (e.g. eam.maximo_silver) and
--- {{catalog}}.{{gold_schema}} (e.g. eam.maximo_gold) before running.
+-- Parameters use Databricks-native :param placeholders, bound at execution by
+-- SQL warehouses / Genie Agents / AI-BI. Set :catalog, :silver_schema,
+-- :gold_schema (e.g. eam / maximo_silver / maximo_gold) before running, or
+-- register via maximo-setup which substitutes the customer's values.
+--
+-- UNIVERSAL MECHANICS APPLIED HERE (owned by maximo-overview — see that skill):
+--   * SITEID is part of every composite-key join (WONUM/ASSETNUM/LOCATION are
+--     unique only within SITEID).
+--   * Status sets are resolved via SYNONYMDOMAIN, never status literals —
+--     WORKORDER.STATUS stores the customer-renamable synonym (VALUE), not the
+--     internal MAXVALUE. (COMP <> CLOSE: "completed" keys on COMP-or-later.)
+--   * HISTORYFLAG closed records are NOT filtered here; Silver keeps them so
+--     completion/trend metrics work. Add HISTORYFLAG filters only per consumer.
+--   * Day/week/month bucketing below uses datediff on app-server-local
+--     datetimes (NOT guaranteed per-row UTC). For cross-site daily buckets,
+--     confirm the deployment's app-server timezone with maximo-setup.
 -- =============================================================================
 
 
 -- -----------------------------------------------------------------------------
--- v_workorder_enriched
--- The workhorse view. WORKORDER + ASSET (current) + LOCATIONS (current) +
--- derived backlog age and aging buckets.
+-- WO-domain Gold views (v_workorder_enriched, v_workorder_status_history,
+-- v_labor_actuals) are SINGLE-DOMAIN and OWNED by maximo-work-orders
+-- (its views.sql ships the canonical DDL). This skill ships only CROSS-DOMAIN
+-- Gold views that span modules (below). Do not re-define the WO views here —
+-- compose against the ones maximo-work-orders owns. See that skill for their DDL.
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE VIEW {{catalog}}.{{gold_schema}}.v_workorder_enriched
-COMMENT 'Enriched work-order header with current asset, location, and derived age. One row per WO (already filtered to WOCLASS = WORKORDER at silver).'
-AS
-SELECT
-    w.workorderid, w.wonum, w.siteid, w.orgid,
-    w.status, w.statusdate,
-    w.worktype, w.istask, w.parent,
-    w.wopriority, w.lead, w.supervisor, w.crewid, w.ownergroup,
-    w.reportdate, w.schedstart, w.schedfinish, w.actstart, w.actfinish,
-    w.targcompdate,
-    w.estlabcost, w.estmatcost, w.actlabcost, w.actmatcost,
-    w.failurecode, w.problemcode,
-    w.assetnum,
-    a.description       AS asset_description,
-    a.classstructureid  AS asset_class_id,
-    a.criticality       AS asset_criticality,
-    w.location,
-    l.description       AS location_description,
-    l.type              AS location_type,
-    w.jpnum, w.pmnum,
-    datediff(DAY, w.reportdate, current_date())  AS days_since_reported,
-    datediff(DAY, w.statusdate, current_date())  AS days_in_current_status,
-    CASE
-        WHEN datediff(DAY, w.reportdate, current_date()) <= 30 THEN '0-30 days'
-        WHEN datediff(DAY, w.reportdate, current_date()) <= 60 THEN '31-60 days'
-        WHEN datediff(DAY, w.reportdate, current_date()) <= 90 THEN '61-90 days'
-        ELSE '90+ days'
-    END                                          AS age_bucket
-FROM {{catalog}}.{{silver_schema}}.workorder w
-LEFT JOIN {{catalog}}.{{silver_schema}}.asset a
-       ON a.assetnum = w.assetnum
-      AND a.siteid   = w.siteid
-      AND a.__END_AT IS NULL       -- current SCD2 row
-LEFT JOIN {{catalog}}.{{silver_schema}}.locations l
-       ON l.location = w.location
-      AND l.siteid   = w.siteid
-      AND l.__END_AT IS NULL;
-
-
--- -----------------------------------------------------------------------------
--- v_workorder_status_history
--- WOSTATUS unpacked with LEAD() for time-in-state.
--- -----------------------------------------------------------------------------
-CREATE OR REPLACE VIEW {{catalog}}.{{gold_schema}}.v_workorder_status_history
-COMMENT 'Work-order status transitions with time-in-state. One row per WOSTATUS row.'
-AS
-SELECT
-    s.wonum, s.siteid,
-    s.status,
-    s.changedate                                           AS status_start,
-    LEAD(s.changedate) OVER (PARTITION BY s.wonum, s.siteid ORDER BY s.changedate) AS status_end,
-    s.changeby, s.memo,
-    datediff(SECOND, s.changedate,
-        LEAD(s.changedate) OVER (PARTITION BY s.wonum, s.siteid ORDER BY s.changedate)
-    ) / 3600.0                                             AS hours_in_status,
-    ROW_NUMBER() OVER (PARTITION BY s.wonum, s.siteid ORDER BY s.changedate) AS transition_seq
-FROM {{catalog}}.{{silver_schema}}.wostatus s;
-
-
--- -----------------------------------------------------------------------------
--- v_labor_actuals
--- LABTRANS aggregated to WO grain with craft breakdown as a map.
--- -----------------------------------------------------------------------------
-CREATE OR REPLACE VIEW {{catalog}}.{{gold_schema}}.v_labor_actuals
-COMMENT 'Labor transactions aggregated to WO grain. One row per (wonum, siteid). Craft breakdown in hours_by_craft map.'
-AS
-SELECT
-    lt.wonum, lt.siteid,
-    COUNT(*)                                       AS labor_transaction_count,
-    ROUND(SUM(lt.regularhrs), 2)                   AS total_regular_hours,
-    ROUND(SUM(COALESCE(lt.premiumpayhours, 0)), 2) AS total_premium_hours,
-    ROUND(SUM(lt.regularhrs + COALESCE(lt.premiumpayhours, 0)), 2) AS total_hours,
-    ROUND(SUM(lt.linecost), 2)                     AS total_labor_cost,
-    MIN(lt.startdate)                              AS first_labor_date,
-    MAX(lt.finishdate)                             AS last_labor_date,
-    map_from_entries(
-        collect_list(named_struct(
-            'craft', lt.craft,
-            'hours', ROUND(lt.regularhrs + COALESCE(lt.premiumpayhours, 0), 2)
-        ))
-    )                                              AS hours_by_craft
-FROM {{catalog}}.{{silver_schema}}.labtrans lt
-WHERE lt.transtype = 'WORK'
-GROUP BY lt.wonum, lt.siteid;
 
 
 -- -----------------------------------------------------------------------------
 -- v_failure_events
 -- Completed WOs with coded failure data, joined to FAILURECODE for descriptions.
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE VIEW {{catalog}}.{{gold_schema}}.v_failure_events
+CREATE OR REPLACE VIEW :catalog.:gold_schema.v_failure_events
 COMMENT 'Completed work orders with coded failure data. One row per FAILUREREPORT, with WO context and FAILURECODE description.'
 AS
 SELECT
@@ -118,21 +57,27 @@ SELECT
     w.actstart                                     AS event_start,
     w.actfinish                                    AS event_end,
     datediff(MINUTE, w.actstart, w.actfinish)      AS event_duration_minutes
-FROM {{catalog}}.{{silver_schema}}.failurereport fr
-JOIN {{catalog}}.{{silver_schema}}.workorder w
+FROM :catalog.:silver_schema.failurereport fr
+JOIN :catalog.:silver_schema.workorder w
     ON w.wonum = fr.wonum AND w.siteid = fr.siteid
-LEFT JOIN {{catalog}}.{{silver_schema}}.failurecode fc
+LEFT JOIN :catalog.:silver_schema.failurecode fc
     ON fc.failurecode = fr.failurecode
-LEFT JOIN {{catalog}}.{{silver_schema}}.asset a
+LEFT JOIN :catalog.:silver_schema.asset a
     ON a.assetnum = w.assetnum AND a.siteid = w.siteid AND a.__END_AT IS NULL
-WHERE w.status IN ('COMP', 'CLOSE');
+-- "Completed" = COMP-or-later. Resolve the synonym set via SYNONYMDOMAIN instead
+-- of literals, because WORKORDER.STATUS stores the customer-renamable synonym
+-- (VALUE), not the internal MAXVALUE. COMP <> CLOSE (many shops never CLOSE).
+WHERE w.status IN (
+    SELECT value FROM :catalog.:silver_schema.synonymdomain
+    WHERE domainid = 'WOSTATUS' AND maxvalue IN ('COMP', 'CLOSE')
+);
 
 
 -- -----------------------------------------------------------------------------
 -- v_pm_schedule
 -- PM master + derived next-due age.
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE VIEW {{catalog}}.{{gold_schema}}.v_pm_schedule
+CREATE OR REPLACE VIEW :catalog.:gold_schema.v_pm_schedule
 COMMENT 'Preventive maintenance schedule with next-due age. One row per active PM.'
 AS
 SELECT
@@ -149,5 +94,5 @@ SELECT
         WHEN pm.nextdate <= current_date() + INTERVAL 90 DAYS THEN 'DUE_90D'
         ELSE 'FUTURE'
     END                                            AS due_bucket
-FROM {{catalog}}.{{silver_schema}}.pm
+FROM :catalog.:silver_schema.pm
 WHERE pm.__END_AT IS NULL;
