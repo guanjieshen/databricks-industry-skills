@@ -18,6 +18,11 @@
 -- -----------------------------------------------------------------------------
 -- The workhorse view. Joins WORKORDER + ASSET + LOCATIONS + computes derived
 -- columns. Use this for almost any "current state" question.
+--
+-- NOTE: this view does NOT pre-filter. Apply WHERE woclass = 'WORKORDER' and the
+-- ISTASK rule yourself per query. `historyflag` is exposed so you can include or
+-- exclude closed/cancelled WOs deliberately (gotcha 11). `status` holds the synonym
+-- VALUE — resolve via SYNONYMDOMAIN when filtering on a status set (gotcha 5).
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE VIEW :catalog.:silver_schema.v_workorder_enriched
 COMMENT 'Enriched Maximo work-order header with current asset, location, and derived age. One row per WO.'
@@ -29,6 +34,7 @@ SELECT
     w.orgid,
     w.status                                                         AS status,
     w.statusdate,
+    w.historyflag,
     w.woclass,
     w.worktype,
     w.istask,
@@ -64,6 +70,9 @@ SELECT
     w.jpnum,
     -- PM origin
     w.pmnum,
+    -- Originator / follow-up (rework tracing — see gotcha 12)
+    w.origrecordid,
+    w.origrecordclass,
     -- Derived columns
     datediff(DAY, w.reportdate, current_date())                      AS days_since_reported,
     datediff(DAY, w.statusdate, current_date())                      AS days_in_current_status,
