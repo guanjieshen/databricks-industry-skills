@@ -1,0 +1,10 @@
+{
+  "query": "count open work orders by site — note our shop renamed some statuses",
+  "expected_skill": "maximo-work-orders",
+  "expected_behavior": [
+    "Loads maximo-work-orders with maximo-overview as parent",
+    "Recognizes that WORKORDER.STATUS stores the synonym VALUE, not the internal MAXVALUE",
+    "Resolves the open-status set via SYNONYMDOMAIN (DOMAINID='WOSTATUS', select VALUE where MAXVALUE in the internal set) rather than hard-coding literals",
+    "Filters WOCLASS='WORKORDER' and ISTASK=0, groups by SITEID"
+  ]
+}

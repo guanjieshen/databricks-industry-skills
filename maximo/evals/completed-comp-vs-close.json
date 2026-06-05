@@ -1,0 +1,10 @@
+{
+  "query": "how many work orders did we complete last quarter?",
+  "expected_skill": "maximo-work-orders",
+  "expected_behavior": [
+    "Loads maximo-work-orders with maximo-overview as parent",
+    "Surfaces the COMP-vs-CLOSE ambiguity before answering: confirms whether 'completed' means COMP (physical work done) or CLOSE (finalized), defaulting to COMP-or-later",
+    "Flags that closed WOs may be filtered out via HISTORYFLAG=0 and confirms they are present in the data",
+    "Filters WOCLASS='WORKORDER' and ISTASK=0, scopes the window on ACTFINISH"
+  ]
+}

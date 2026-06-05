@@ -1,0 +1,10 @@
+{
+  "query": "show me rework — follow-up work orders created on the same asset after a job finished",
+  "expected_skill": "maximo-work-orders",
+  "expected_behavior": [
+    "Loads maximo-work-orders with maximo-overview as parent",
+    "Traces the originator->follow-up relationship via ORIGRECORDID/ORIGRECORDCLASS, NOT the PARENT (hierarchy) column",
+    "Notes that follow-ups live in separate hierarchies so their cost/labor do not roll up to the originator",
+    "Defers rework-RATE as a reliability KPI to maximo-reliability"
+  ]
+}

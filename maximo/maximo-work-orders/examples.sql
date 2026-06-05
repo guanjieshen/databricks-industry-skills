@@ -12,6 +12,30 @@
 -- These examples assume views.sql and metric_udfs.sql have been registered.
 -- Workflow priority: if a Trusted UDF matches the question, prefer it over the
 -- view-based query (see SKILL.md §Workflow).
+--
+-- STATUS FILTERING: examples below use literal status sets (e.g. ('COMP','CLOSE'))
+-- for readability. That is correct in a STOCK deployment, but WORKORDER.STATUS
+-- stores the synonym VALUE, so when a customer has added status synonyms, resolve
+-- the set from the internal MAXVALUE via SYNONYMDOMAIN — see example 11 for the
+-- canonical pattern (gotcha 5). Also decide deliberately whether closed/cancelled
+-- WOs (HISTORYFLAG = 1) are in scope before computing completion/trend metrics
+-- (gotcha 11), and prefer COMP-or-later (not CLOSE-only) for "completed work".
+-- =============================================================================
+--
+-- Contents (load the block that matches the question):
+--   1a. Open WO count at a single site (Trusted UDF)
+--   1b. Open WO backlog by site and work type (view-based)
+--   2.  Aging buckets on open WOs (wo_aging_bucket UDF)
+--   3.  Mean time-to-complete by work type (p50/p90)
+--   4.  Actual vs planned labor hours by WO (variance)
+--   5.  Top assets by WO count this year (bad-actor by volume)
+--   6.  Status history for a single WO
+--   7.  Time spent in each status (dwell, aggregated)
+--   8.  Completed WOs per month (throughput trend)
+--   9.  Labor hours by craft over a period
+--   10. Failure-mode pareto for a class of asset
+--   11. Completed-work count, synonym-safe + HISTORYFLAG-aware (canonical)
+--   12. Rework: follow-up WOs and their originating work order
 -- =============================================================================
 
 
@@ -248,3 +272,57 @@ WHERE w.woclass = 'WORKORDER'
 GROUP BY fr.failurecode, fc.description
 ORDER BY event_count DESC
 LIMIT 20;
+
+
+-- -----------------------------------------------------------------------------
+-- 11. Completed-work count, synonym-safe + HISTORYFLAG-aware (canonical pattern)
+-- -----------------------------------------------------------------------------
+-- Trigger: "how many WOs did we complete", "completion count" — when the
+-- deployment uses custom status synonyms, or you must be sure closed WOs count.
+-- Resolves every synonym of the internal COMP/CLOSE values via SYNONYMDOMAIN
+-- (the IBM WORKVIEW pattern, gotcha 5). "Completed" = COMP-or-later (gotcha 11).
+SELECT
+    siteid,
+    worktype,
+    COUNT(*) AS completed_count
+FROM :catalog.:silver_schema.WORKORDER w
+WHERE w.woclass = 'WORKORDER'
+  AND w.istask = 0
+  AND w.status IN (
+        SELECT value
+        FROM :catalog.:silver_schema.SYNONYMDOMAIN
+        WHERE domainid = 'WOSTATUS'
+          AND maxvalue IN ('COMP', 'CLOSE')   -- COMP-or-later; drop 'CLOSE' for COMP-only
+      )
+  AND w.actfinish >= add_months(current_date(), -12)
+GROUP BY siteid, worktype
+ORDER BY completed_count DESC;
+
+
+-- -----------------------------------------------------------------------------
+-- 12. Rework: follow-up WOs and their originating work order
+-- -----------------------------------------------------------------------------
+-- Trigger: "repeat work on the same asset", "follow-up work orders", "rework".
+-- Follow-ups live in SEPARATE hierarchies from the originator (their cost/labor
+-- do NOT roll up to it), so trace them via ORIGRECORDID/ORIGRECORDCLASS, not
+-- PARENT (gotcha 12). This finds follow-up WOs spawned from another WO and pairs
+-- each with its originator. Rework *rate* as a KPI belongs to maximo-reliability.
+SELECT
+    f.wonum                          AS followup_wonum,
+    f.siteid,
+    f.worktype                       AS followup_worktype,
+    f.reportdate                     AS followup_reported,
+    o.wonum                          AS originator_wonum,
+    o.worktype                       AS originator_worktype,
+    o.assetnum                       AS originator_assetnum,
+    o.actfinish                      AS originator_finished,
+    datediff(DAY, o.actfinish, f.reportdate) AS days_to_followup
+FROM :catalog.:silver_schema.WORKORDER f
+JOIN :catalog.:silver_schema.WORKORDER o
+    ON o.wonum  = f.origrecordid
+   AND o.siteid = f.siteid
+WHERE f.woclass = 'WORKORDER'
+  AND f.origrecordclass = 'WORKORDER'   -- follow-ups spawned from a WO (not a ticket)
+  AND f.origrecordid IS NOT NULL
+ORDER BY f.reportdate DESC
+LIMIT 100;

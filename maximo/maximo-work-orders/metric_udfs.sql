@@ -13,6 +13,13 @@
 --
 -- Each function is a single SQL statement (no procedural logic) so it can be
 -- inlined into Genie's generated queries.
+--
+-- STATUS FILTERS use literal values (COMP/CLOSE/CAN), which are the STOCK Maximo
+-- internal values. If the deployment has custom status synonyms, WORKORDER.STATUS
+-- stores the synonym, not the internal value — resolve the set via SYNONYMDOMAIN
+-- (gotcha 5) before registering these as governed metrics, or the counts under-
+-- report. These metrics intentionally do NOT filter HISTORYFLAG, so completed
+-- counts include closed WOs; confirm closed WOs are present in silver (gotcha 11).
 -- =============================================================================
 
 -- Ensure the metrics schema exists
@@ -25,7 +32,8 @@ COMMENT 'Trusted-asset SQL functions for Maximo work-management metrics';
 -- -----------------------------------------------------------------------------
 -- Trigger: "how many open work orders at <site>"
 -- Returns the count of open (non-COMP, non-CLOSE, non-CAN) parent WOs at a
--- site as of a point in time.
+-- site as of a point in time. Status literals assume stock values — see the
+-- synonym caveat in the file header (gotcha 5).
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION :catalog.:gold_schema.open_wo_count(
     site STRING COMMENT 'SITEID',

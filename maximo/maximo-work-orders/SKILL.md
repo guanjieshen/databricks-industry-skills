@@ -6,14 +6,15 @@ description: |
   aging, status history, completion, labor by craft, planned vs actual,
   asset/location/job-plan joins. Triggers on: "open work orders",
   "WO backlog", "WORKORDER", "WOSTATUS", "work order status history",
-  "labor hours by craft", "completed WOs", "preventive vs corrective
-  maintenance", "WO aging", "actual vs planned labor", "top assets by WO
-  volume", "work order optimization dashboard", and any question about
-  work-order operations. Compose with maximo-overview for baseline data
+  "labor hours by craft", "completed WOs", "completed vs closed work",
+  "preventive vs corrective maintenance", "WO aging", "actual vs planned
+  labor", "top assets by WO volume", "rework", "follow-up work orders",
+  "work order optimization dashboard", and any question about work-order
+  operations. Compose with maximo-overview for baseline data
   model literacy, maximo-labor-resources for labor master, and
   maximo-asset-hierarchy for hierarchical rollups.
 metadata:
-  version: "0.2.0"
+  version: "0.3.0"
 parent: maximo-overview
 ---
 
@@ -42,21 +43,22 @@ Triggered by work-order operational questions:
 
 ## Top gotchas
 
-These traps silently produce wrong numbers. Read before writing any non-trivial query (full set in [gotchas.md](gotchas.md)):
+These traps silently produce wrong numbers. Read before writing any non-trivial query (full set of 15 in [gotchas.md](gotchas.md); `maximo-overview` carries the universal ones, including `WORKORDER.STATUS`-current-vs-`WOSTATUS`-history):
 
-1. **`WORKORDER.STATUS` is current; `WOSTATUS` is history.** For status history / time-in-state, query `WOSTATUS` (one row per transition). Never derive history from `WORKORDER.STATUS` alone.
-2. **`WHERE WOCLASS = 'WORKORDER'`.** The `WORKORDER` table also holds `PM`, `CHANGE`, `RELEASE`, `ACTIVITY` records. Almost every WO query must filter to `'WORKORDER'`, or backlog/labor/aging numbers inflate.
-3. **`ISTASK = 0` for parent dedup.** A WO has one parent header (`ISTASK = 0`) and N child tasks (`ISTASK = 1`). For backlog counts, use only parents. For totals, roll up to `PARENT` or sum children excluding the parent header.
-4. **`SITEID` in every join.** `WONUM`, `ASSETNUM`, `LOCATION` are unique only within a site. Multi-site customers reuse the same `WONUM` at different sites — joining without `SITEID` produces a cross product.
-5. **`WPLABOR` / `WPMATERIAL` are PLANNED; `LABTRANS` is ACTUAL.** Easy to confuse. For variance analysis you need both: `LABTRANS.REGULARHRS + PREMIUMPAYHOURS` (actual) vs `WPLABOR.LABORHRS` (planned).
+1. **`WHERE WOCLASS = 'WORKORDER'`.** The `WORKORDER` table also holds `PM`, `CHANGE`, `RELEASE`, `ACTIVITY` records. Almost every WO query must filter to `'WORKORDER'`, or backlog/labor/aging numbers inflate.
+2. **`ISTASK = 0` to drop tasks — but mind child WOs.** `ISTASK = 1` rows are tasks *within* a parent (not standalone WOs); `ISTASK = 0` with a `PARENT` set is a *child work order* (independently tracked). Count `ISTASK = 0` for WO counts; for top-level headers only, add `PARENT IS NULL`. `PARENT` is mutable (work packages regroup WOs).
+3. **`SITEID` in every join.** `WONUM`, `ASSETNUM`, `LOCATION` are unique only within a site. Multi-site customers reuse the same `WONUM` at different sites — joining without `SITEID` produces a cross product.
+4. **`STATUS` is a synonym domain, and `HISTORYFLAG` hides closed work.** `WORKORDER.STATUS` stores the customer-renamable synonym (`VALUE`), not the internal `MAXVALUE` — so a literal `STATUS IN ('COMP',…)` silently misses custom synonyms. Resolve via `SYNONYMDOMAIN` (gotcha 5). Separately, closed/cancelled WOs get `HISTORYFLAG = 1` and standard Maximo views filter `HISTORYFLAG = 0` — confirm closed work is even present before computing completion/trend metrics.
+5. **`COMP` ≠ `CLOSE` for "completed work."** `COMP` = physical work done; `CLOSE` = a separate, often-deferred finalization (many shops never CLOSE). Key "completed" on `COMP`-or-later, not `CLOSE`. (`WPLABOR`/`WPMATERIAL` = PLANNED vs `LABTRANS` = ACTUAL, and the rest, are in [gotchas.md](gotchas.md).)
 
 ## Questions to surface first
 
 Surface these to the user *before* answering — there is no defensible default:
 
-1. **Open-status set.** "Open" is customer-configurable. Maximo defaults usually mean *every status except* `COMP`, `CLOSE`, `CAN` — but each customer may extend `WOSTATUS` synonyms differently. Default: `('WAPPR','APPR','INPRG','WSCH','WMATL')`. Confirm or override; the canonical lookup is `SYNONYMDOMAIN` filtered to `DOMAINID = 'WOSTATUS'`.
-2. **Backlog age date column.** "Days aged" can mean `current_date() - REPORTDATE` (created) or `current_date() - STATUSDATE` (days in current status). These produce different numbers. Confirm which the user wants.
-3. **`WORKTYPE` codes.** Defaults (`CM`, `PM`, `EM`, `PROJ`) are advisory — many customers add 10+ work types or use different codes entirely. If a question depends on the corrective-vs-preventive split, confirm the codes that exist in this deployment.
+1. **Open-status set.** "Open" is customer-configurable. Maximo defaults usually mean *every status except* `COMP`, `CLOSE`, `CAN` — but each customer may extend `WOSTATUS` synonyms differently. Default: `('WAPPR','APPR','INPRG','WSCH','WMATL')`. Confirm or override. The canonical lookup is `SYNONYMDOMAIN` filtered to `DOMAINID = 'WOSTATUS'` — and because `STATUS` stores the *synonym* (`VALUE`), resolve the set from the internal `MAXVALUE` rather than hard-coding literals (gotcha 5).
+2. **"Completed" definition.** Does the user mean `COMP` (physical work done) or only `CLOSE` (finalized)? Default to `COMP`-or-later, since closing is frequently deferred. Also confirm closed WOs are present in the data at all — some pipelines mirror Maximo's `HISTORYFLAG = 0` filter and silently drop them (gotcha 11).
+3. **Backlog age date column.** "Days aged" can mean `current_date() - REPORTDATE` (created) or `current_date() - STATUSDATE` (days in current status). These produce different numbers. Confirm which the user wants.
+4. **`WORKTYPE` codes.** Defaults (`CM`, `PM`, `EM`, `PROJ`) are advisory — many customers add 10+ work types or use different codes entirely. If a question depends on the corrective-vs-preventive split, confirm the codes that exist in this deployment. Note: work type is *not* a clean reactive-vs-proactive proxy (gotcha 14) — for that ratio, defer to `maximo-reliability`.
 
 ## Pre-flight (per session)
 
@@ -79,7 +81,7 @@ For any new question, resolve in this order:
 ## What's in this skill
 
 - [schema.md](schema.md) — load when joining or selecting columns. Full reference for `WORKORDER`, `WOSTATUS`, `ASSET`, `LOCATIONS`, `LABTRANS`, `WPLABOR`/`WPMATERIAL`, `JOBPLAN`, `FAILUREREPORT`.
-- [gotchas.md](gotchas.md) — load before writing non-trivial joins. Extended versions of the 5 inline gotchas + 5 more (REST-API ingestion gap, status-set lookup, date semantics, failure-code hierarchy, custom worktypes).
+- [gotchas.md](gotchas.md) — load before writing non-trivial joins. 15 gotchas: the inline 5 plus status-synonym resolution, `HISTORYFLAG`/`COMP`-vs-`CLOSE`/`HISTEDIT`, follow-up (originator) hierarchies, app-server-timezone date storage, corrective≠reactive, per-record cost columns, REST-API ingestion gap, date semantics, failure-code hierarchy, custom worktypes.
 - [examples.sql](examples.sql) — load when the user's question matches a pattern (backlog by site, aging buckets, MTTC, actual vs planned, status history, craft utilization, failure pareto).
 - [views.sql](views.sql) — DDL for `v_workorder_enriched`, `v_workorder_status_history`, `v_labor_actuals`. Register once via `maximo-setup`.
 - [metric_udfs.sql](metric_udfs.sql) — Trusted Asset UC SQL functions Genie Code calls as governed metrics instead of regenerating ad-hoc SQL. Register once via `maximo-setup`.
@@ -96,4 +98,6 @@ For any new question, resolve in this order:
 
 - **`maximo-labor-resources`** for labor master detail (`LABOR`, `PERSON`, qualifications, crews). This skill uses `LABTRANS.LABORCODE` as a foreign key but doesn't document the labor master itself.
 - **`maximo-asset-hierarchy`** for hierarchical rollups ("open WOs under station X", "backlog by region"). Use `v_location_rollup_keys` to roll up WO counts/cost to any location parent.
+- **`maximo-maintenance-cost`** for any cost question beyond a single-record readout — cost rollup, estimate-vs-actual variance, contractor spend, PM-vs-CM cost, and multi-currency (`WOCURRENCY`) normalization. This skill's views pass `ACTLABCOST`/`ACTMATCOST` through but don't own cost methodology (gotcha 15).
+- **`maximo-reliability`** for reliability KPIs computed *from* WO data — MTBF, MTTR, PM compliance, and reactive-vs-proactive / schedule-compliance ratios (which must be measured on labor hours, not WO counts — gotcha 14).
 - **`maximo-setup`** to register the views in [views.sql](views.sql) and the Trusted UDFs in [metric_udfs.sql](metric_udfs.sql). Never run those scripts from this skill — defer to setup's preview-then-apply workflow.
