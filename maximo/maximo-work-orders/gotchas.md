@@ -107,9 +107,8 @@ JOIN ASSET A ON A.ASSETNUM = WO.ASSETNUM AND A.SITEID = WO.SITEID
 | `TARGCOMPDATE` | Target / desired completion |
 | `SCHEDSTART` / `SCHEDFINISH` | Scheduled window |
 | `ACTSTART` / `ACTFINISH` | Actual execution window |
-| `STATUSCHANGEDATE` (on PM-generated WOs) | When PM evaluated this slot |
 
-"Backlog age" usually = `current_date() - REPORTDATE` for open WOs. Some customers prefer `current_date() - STATUSDATE` ("days in current status"). Confirm which.
+"Backlog age" usually = `current_date() - REPORTDATE` for open WOs. Some customers prefer `current_date() - STATUSDATE` ("days in current status"). Confirm which (also surfaced in SKILL.md's *Questions to surface first*).
 
 ## 8. `WPLABOR` / `WPMATERIAL` are PLANNED — not actual
 

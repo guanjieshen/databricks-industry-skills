@@ -1,28 +1,22 @@
--- ─────────────────────────────────────────────────────────────────────────────
--- Trusted Asset functions for Genie.
--- These are UC SQL functions: register them once (CREATE FUNCTION) so Genie
--- Spaces can call them as certified, governed metrics rather than regenerating
--- ad-hoc SQL. Substitute your catalog.schema before running.
--- See: https://docs.databricks.com/aws/en/genie/trusted-assets
--- ─────────────────────────────────────────────────────────────────────────────
-
 -- =============================================================================
 -- Maximo Work Orders — UC SQL Function (Metric UDF) DDL
 -- =============================================================================
--- Substitute {{maximo_catalog}}.{{maximo_schema}} with the customer's silver
--- catalog/schema, and {{metrics_schema}} with a Gold-layer schema for metric
--- functions (e.g. eam.maximo_metrics).
+-- Trusted Asset functions for Genie. Register once (CREATE FUNCTION) so Genie
+-- Code and Genie Agents call them as certified, governed metrics rather than
+-- regenerating ad-hoc SQL. Ref: https://docs.databricks.com/aws/en/genie/trusted-assets
 --
--- Once registered with EXECUTE granted, Genie (Code or Space) treats results
--- from these functions as "Trusted assets" — they earn a badge and are
--- preferred over ad-hoc SQL for the same metric.
+-- Bind these Databricks SQL parameters at registration time:
+--   :catalog        → customer UC catalog (e.g. eam)
+--   :silver_schema  → Silver schema with MBO tables (e.g. maximo_silver)
+--   :gold_schema    → Gold/metrics schema where these functions live (e.g. maximo_metrics)
+--   :principal      → grant target (a group preferred, e.g. genie-users)
 --
--- Pattern: each function is a single SQL statement (no procedural logic) so
--- it can be inlined into Genie's generated queries.
+-- Each function is a single SQL statement (no procedural logic) so it can be
+-- inlined into Genie's generated queries.
 -- =============================================================================
 
 -- Ensure the metrics schema exists
-CREATE SCHEMA IF NOT EXISTS {{maximo_catalog}}.{{metrics_schema}}
+CREATE SCHEMA IF NOT EXISTS :catalog.:gold_schema
 COMMENT 'Trusted-asset SQL functions for Maximo work-management metrics';
 
 
@@ -33,7 +27,7 @@ COMMENT 'Trusted-asset SQL functions for Maximo work-management metrics';
 -- Returns the count of open (non-COMP, non-CLOSE, non-CAN) parent WOs at a
 -- site as of a point in time.
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION {{maximo_catalog}}.{{metrics_schema}}.open_wo_count(
+CREATE OR REPLACE FUNCTION :catalog.:gold_schema.open_wo_count(
     site STRING COMMENT 'SITEID',
     as_of TIMESTAMP COMMENT 'Point in time (use current_timestamp() for "now")'
 )
@@ -41,7 +35,7 @@ RETURNS BIGINT
 COMMENT 'Trusted metric: count of open parent work orders at a site as of a given time. Excludes child tasks (ISTASK=1) and non-WO classes.'
 RETURN (
     SELECT COUNT(*)
-    FROM {{maximo_catalog}}.{{maximo_schema}}.WORKORDER w
+    FROM :catalog.:silver_schema.WORKORDER w
     WHERE w.siteid = site
       AND w.woclass = 'WORKORDER'
       AND w.istask = 0
@@ -56,7 +50,7 @@ RETURN (
 -- Trigger: "what aging bucket does this WO fall into"
 -- Standard 30/60/90 day buckets from REPORTDATE.
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION {{maximo_catalog}}.{{metrics_schema}}.wo_aging_bucket(
+CREATE OR REPLACE FUNCTION :catalog.:gold_schema.wo_aging_bucket(
     reportdate TIMESTAMP COMMENT 'WORKORDER.REPORTDATE'
 )
 RETURNS STRING
@@ -78,7 +72,7 @@ RETURN (
 -- Mean elapsed days from REPORTDATE to ACTFINISH for completed WOs in a
 -- window, filterable by work type.
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION {{maximo_catalog}}.{{metrics_schema}}.mean_time_to_complete(
+CREATE OR REPLACE FUNCTION :catalog.:gold_schema.mean_time_to_complete(
     worktype STRING COMMENT 'WORKORDER.WORKTYPE — e.g. CM, PM, EM. Pass NULL for all.',
     window_days INT COMMENT 'Look-back window for completed WOs (e.g. 90)'
 )
@@ -86,7 +80,7 @@ RETURNS DOUBLE
 COMMENT 'Trusted metric: mean days from REPORTDATE to ACTFINISH for completed WOs in the given work type and window.'
 RETURN (
     SELECT AVG(datediff(DAY, w.reportdate, w.actfinish))
-    FROM {{maximo_catalog}}.{{maximo_schema}}.WORKORDER w
+    FROM :catalog.:silver_schema.WORKORDER w
     WHERE w.woclass = 'WORKORDER'
       AND w.istask = 0
       AND w.status IN ('COMP', 'CLOSE')
@@ -102,7 +96,7 @@ RETURN (
 -- Trigger: "how old is this WO"
 -- Days between REPORTDATE and the as-of time. Negative if reportdate is in the future.
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION {{maximo_catalog}}.{{metrics_schema}}.backlog_age_days(
+CREATE OR REPLACE FUNCTION :catalog.:gold_schema.backlog_age_days(
     reportdate TIMESTAMP COMMENT 'WORKORDER.REPORTDATE',
     as_of TIMESTAMP COMMENT 'As-of time, typically current_timestamp()'
 )
@@ -116,7 +110,7 @@ RETURN datediff(DAY, reportdate, as_of);
 -- -----------------------------------------------------------------------------
 -- Trigger: "how long has this WO been in current status"
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION {{maximo_catalog}}.{{metrics_schema}}.time_in_current_status(
+CREATE OR REPLACE FUNCTION :catalog.:gold_schema.time_in_current_status(
     wonum STRING,
     siteid STRING
 )
@@ -124,19 +118,19 @@ RETURNS DOUBLE
 COMMENT 'Trusted metric: hours since the most recent WOSTATUS transition for a given WO.'
 RETURN (
     SELECT datediff(SECOND, MAX(s.changedate), current_timestamp()) / 3600.0
-    FROM {{maximo_catalog}}.{{maximo_schema}}.WOSTATUS s
+    FROM :catalog.:silver_schema.WOSTATUS s
     WHERE s.wonum = wonum AND s.siteid = siteid
 );
 
 
 -- =============================================================================
 -- Grants — required for Genie to register these as Trusted assets.
--- Substitute {{principal}} (a group preferred, e.g. `genie-users`).
+-- Substitute :principal — a group is preferred (e.g. genie-users).
 -- =============================================================================
 
--- GRANT USAGE ON SCHEMA {{maximo_catalog}}.{{metrics_schema}} TO `{{principal}}`;
--- GRANT EXECUTE ON FUNCTION {{maximo_catalog}}.{{metrics_schema}}.open_wo_count            TO `{{principal}}`;
--- GRANT EXECUTE ON FUNCTION {{maximo_catalog}}.{{metrics_schema}}.wo_aging_bucket          TO `{{principal}}`;
--- GRANT EXECUTE ON FUNCTION {{maximo_catalog}}.{{metrics_schema}}.mean_time_to_complete    TO `{{principal}}`;
--- GRANT EXECUTE ON FUNCTION {{maximo_catalog}}.{{metrics_schema}}.backlog_age_days         TO `{{principal}}`;
--- GRANT EXECUTE ON FUNCTION {{maximo_catalog}}.{{metrics_schema}}.time_in_current_status   TO `{{principal}}`;
+-- GRANT USAGE ON SCHEMA :catalog.:gold_schema TO `:principal`;
+-- GRANT EXECUTE ON FUNCTION :catalog.:gold_schema.open_wo_count            TO `:principal`;
+-- GRANT EXECUTE ON FUNCTION :catalog.:gold_schema.wo_aging_bucket          TO `:principal`;
+-- GRANT EXECUTE ON FUNCTION :catalog.:gold_schema.mean_time_to_complete    TO `:principal`;
+-- GRANT EXECUTE ON FUNCTION :catalog.:gold_schema.backlog_age_days         TO `:principal`;
+-- GRANT EXECUTE ON FUNCTION :catalog.:gold_schema.time_in_current_status   TO `:principal`;

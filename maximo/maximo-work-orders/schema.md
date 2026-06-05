@@ -2,7 +2,7 @@
 
 All tables follow the IBM Maximo MBO model. Column lists below are the most commonly used columns, not exhaustive — customers often have additional extension columns. The MBO ↔ table mapping is 1:1 for these tables in standard deployments.
 
-Catalog/schema is customer-specific. The skill substitutes `{{maximo_catalog}}.{{maximo_schema}}` at query time.
+Catalog/schema is customer-specific. SQL uses Databricks-native parameter placeholders — `:catalog` (e.g. `eam`), `:silver_schema` (the MBO layer, e.g. `maximo_silver`), `:gold_schema` (Trusted UDFs, e.g. `maximo_metrics`). Bind at execution / registration.
 
 ## Contents
 

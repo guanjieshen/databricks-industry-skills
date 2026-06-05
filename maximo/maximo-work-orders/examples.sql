@@ -2,46 +2,61 @@
 -- Maximo Work Orders — Gold-Standard Query Examples
 -- =============================================================================
 -- Each block is a parameterized template that maps to a single analytical
--- question. Substitute the placeholders:
---   {{maximo_catalog}}.{{maximo_schema}}  →  e.g. eam.maximo_silver
---   {{open_statuses}}                     →  e.g. ('WAPPR','APPR','INPRG','WMATL','WSCH')
--- These examples assume the views in views.sql have been created.
+-- question. Bind these Databricks SQL parameters at execution time:
+--   :catalog          → the customer's UC catalog (e.g. eam)
+--   :silver_schema    → Silver schema with the MBO tables (e.g. maximo_silver)
+--   :gold_schema      → Gold/metrics schema with Trusted UDFs (e.g. maximo_metrics)
+--                       — only needed for examples that call a Trusted UDF
+--   :open_statuses    → multi-value list, e.g. ('WAPPR','APPR','INPRG','WMATL','WSCH')
+--   :wonum, :siteid, :worktype, :asset_class_id  → per-query value parameters
+-- These examples assume views.sql and metric_udfs.sql have been registered.
+-- Workflow priority: if a Trusted UDF matches the question, prefer it over the
+-- view-based query (see SKILL.md §Workflow).
 -- =============================================================================
 
 
 -- -----------------------------------------------------------------------------
--- 1. Open work-order backlog by site and work type
+-- 1a. Open WO count at a single site (Trusted UDF — prefer this)
 -- -----------------------------------------------------------------------------
--- Trigger: "what's our open WO backlog by site"
+-- Trigger: "how many open WOs at site X", "current open count for <site>"
+-- The open_wo_count UDF is the governed metric. Use this when the user wants a
+-- single number for one site. For breakdowns (by worktype, age bucket, etc.),
+-- fall through to the view-based queries below.
+SELECT :catalog.:gold_schema.open_wo_count(:siteid, current_timestamp()) AS open_wo_count;
+
+
+-- -----------------------------------------------------------------------------
+-- 1b. Open WO backlog by site and work type (view-based — when UDF grain doesn't fit)
+-- -----------------------------------------------------------------------------
+-- Trigger: "what's our open WO backlog by site", "open WOs split by worktype"
+-- The open_wo_count UDF returns per-site only. For multi-dimensional breakdowns,
+-- query v_workorder_enriched directly.
 SELECT
     siteid,
     worktype,
     COUNT(*) AS open_wo_count
-FROM {{maximo_catalog}}.{{maximo_schema}}.v_workorder_enriched
+FROM :catalog.:silver_schema.v_workorder_enriched
 WHERE woclass = 'WORKORDER'
   AND istask = 0
-  AND status IN {{open_statuses}}
+  AND status IN (:open_statuses)
 GROUP BY siteid, worktype
 ORDER BY siteid, open_wo_count DESC;
 
 
 -- -----------------------------------------------------------------------------
--- 2. Aging buckets on open WOs
+-- 2. Aging buckets on open WOs (uses wo_aging_bucket Trusted UDF)
 -- -----------------------------------------------------------------------------
 -- Trigger: "how aged is our backlog", "WOs older than 90 days"
+-- Calls the wo_aging_bucket UDF for the standard 30/60/90 bucket assignment
+-- instead of inlining a CASE statement — Genie should prefer this pattern.
 SELECT
     siteid,
-    CASE
-        WHEN datediff(day, reportdate, current_date()) <= 30  THEN '0-30 days'
-        WHEN datediff(day, reportdate, current_date()) <= 60  THEN '31-60 days'
-        WHEN datediff(day, reportdate, current_date()) <= 90  THEN '61-90 days'
-        ELSE '90+ days'
-    END AS age_bucket,
+    :catalog.:gold_schema.wo_aging_bucket(reportdate) AS age_bucket,
     COUNT(*) AS wo_count
-FROM {{maximo_catalog}}.{{maximo_schema}}.v_workorder_enriched
+FROM :catalog.:silver_schema.v_workorder_enriched
 WHERE woclass = 'WORKORDER'
   AND istask = 0
-  AND status IN {{open_statuses}}
+  AND status IN (:open_statuses)
 GROUP BY siteid, age_bucket
 ORDER BY siteid,
     CASE age_bucket
@@ -53,16 +68,19 @@ ORDER BY siteid,
 
 
 -- -----------------------------------------------------------------------------
--- 3. Mean time-to-complete by work type (completed in last N days)
+-- 3. Mean time-to-complete by work type (completed in last 90 days)
 -- -----------------------------------------------------------------------------
 -- Trigger: "average completion time by work type", "how long are CM WOs taking"
+-- Note: the mean_time_to_complete Trusted UDF returns a single AVG for one
+-- worktype + window; use this view-based version when the user wants p50/p90
+-- percentiles or a multi-worktype breakdown.
 SELECT
     worktype,
     COUNT(*) AS completed_count,
-    ROUND(AVG(datediff(day, reportdate, actfinish)), 1) AS avg_days_to_complete,
-    ROUND(PERCENTILE(datediff(day, reportdate, actfinish), 0.5), 1) AS p50_days,
-    ROUND(PERCENTILE(datediff(day, reportdate, actfinish), 0.9), 1) AS p90_days
-FROM {{maximo_catalog}}.{{maximo_schema}}.WORKORDER
+    ROUND(AVG(datediff(DAY, reportdate, actfinish)), 1) AS avg_days_to_complete,
+    ROUND(PERCENTILE(datediff(DAY, reportdate, actfinish), 0.5), 1) AS p50_days,
+    ROUND(PERCENTILE(datediff(DAY, reportdate, actfinish), 0.9), 1) AS p90_days
+FROM :catalog.:silver_schema.WORKORDER
 WHERE woclass = 'WORKORDER'
   AND istask = 0
   AND status IN ('COMP', 'CLOSE')
@@ -78,12 +96,12 @@ ORDER BY completed_count DESC;
 -- Trigger: "labor variance", "actual vs planned hours"
 WITH actual AS (
     SELECT wonum, siteid, SUM(regularhrs + COALESCE(premiumpayhours, 0)) AS actual_hrs
-    FROM {{maximo_catalog}}.{{maximo_schema}}.LABTRANS
+    FROM :catalog.:silver_schema.LABTRANS
     GROUP BY wonum, siteid
 ),
 planned AS (
     SELECT wonum, siteid, SUM(laborhrs) AS planned_hrs
-    FROM {{maximo_catalog}}.{{maximo_schema}}.WPLABOR
+    FROM :catalog.:silver_schema.WPLABOR
     GROUP BY wonum, siteid
 )
 SELECT
@@ -94,7 +112,7 @@ SELECT
     CASE WHEN p.planned_hrs > 0
          THEN ROUND(100.0 * (a.actual_hrs - p.planned_hrs) / p.planned_hrs, 1)
          ELSE NULL END AS variance_pct
-FROM {{maximo_catalog}}.{{maximo_schema}}.WORKORDER w
+FROM :catalog.:silver_schema.WORKORDER w
 LEFT JOIN actual  a ON a.wonum = w.wonum AND a.siteid = w.siteid
 LEFT JOIN planned p ON p.wonum = w.wonum AND p.siteid = w.siteid
 WHERE w.woclass = 'WORKORDER'
@@ -112,8 +130,8 @@ SELECT
     a.assetnum, a.siteid, a.description AS asset_description,
     a.classstructureid,
     COUNT(*) AS wo_count
-FROM {{maximo_catalog}}.{{maximo_schema}}.WORKORDER w
-JOIN {{maximo_catalog}}.{{maximo_schema}}.ASSET a
+FROM :catalog.:silver_schema.WORKORDER w
+JOIN :catalog.:silver_schema.ASSET a
     ON a.assetnum = w.assetnum AND a.siteid = w.siteid
 WHERE w.woclass = 'WORKORDER'
   AND w.istask = 0
@@ -135,8 +153,8 @@ SELECT
     datediff(SECOND, s.changedate,
              LEAD(s.changedate) OVER (PARTITION BY s.wonum, s.siteid ORDER BY s.changedate)
             ) / 3600.0 AS hours_in_status
-FROM {{maximo_catalog}}.{{maximo_schema}}.WOSTATUS s
-WHERE s.wonum = '{{wonum}}' AND s.siteid = '{{siteid}}'
+FROM :catalog.:silver_schema.WOSTATUS s
+WHERE s.wonum = :wonum AND s.siteid = :siteid
 ORDER BY s.changedate;
 
 
@@ -150,7 +168,7 @@ WITH dwell AS (
         datediff(SECOND, s.changedate,
                  LEAD(s.changedate) OVER (PARTITION BY s.wonum, s.siteid ORDER BY s.changedate)
                 ) / 3600.0 AS hours_in_status
-    FROM {{maximo_catalog}}.{{maximo_schema}}.WOSTATUS s
+    FROM :catalog.:silver_schema.WOSTATUS s
 )
 SELECT
     d.status,
@@ -159,10 +177,10 @@ SELECT
     ROUND(PERCENTILE(d.hours_in_status, 0.5), 1) AS p50_hours,
     ROUND(PERCENTILE(d.hours_in_status, 0.9), 1) AS p90_hours
 FROM dwell d
-JOIN {{maximo_catalog}}.{{maximo_schema}}.WORKORDER w
+JOIN :catalog.:silver_schema.WORKORDER w
     ON w.wonum = d.wonum AND w.siteid = d.siteid
 WHERE w.woclass = 'WORKORDER'
-  AND w.worktype = '{{worktype}}'
+  AND w.worktype = :worktype
   AND d.hours_in_status IS NOT NULL
 GROUP BY d.status
 ORDER BY avg_hours DESC;
@@ -178,7 +196,7 @@ SELECT
     worktype,
     COUNT(*) AS completed_count,
     ROUND(SUM(actlabcost + actmatcost), 2) AS total_actual_cost
-FROM {{maximo_catalog}}.{{maximo_schema}}.WORKORDER
+FROM :catalog.:silver_schema.WORKORDER
 WHERE woclass = 'WORKORDER'
   AND istask = 0
   AND status IN ('COMP', 'CLOSE')
@@ -199,7 +217,7 @@ SELECT
     ROUND(SUM(lt.regularhrs), 1) AS regular_hrs,
     ROUND(SUM(COALESCE(lt.premiumpayhours, 0)), 1) AS premium_hrs,
     ROUND(SUM(lt.linecost), 2) AS total_cost
-FROM {{maximo_catalog}}.{{maximo_schema}}.LABTRANS lt
+FROM :catalog.:silver_schema.LABTRANS lt
 WHERE lt.startdate >= current_date() - INTERVAL 90 DAYS
   AND lt.transtype = 'WORK'
 GROUP BY lt.craft, date_trunc('WEEK', lt.startdate)
@@ -216,16 +234,16 @@ SELECT
     COUNT(*) AS event_count,
     ROUND(100.0 * COUNT(*) /
           SUM(COUNT(*)) OVER (), 2) AS pct_of_total
-FROM {{maximo_catalog}}.{{maximo_schema}}.FAILUREREPORT fr
-JOIN {{maximo_catalog}}.{{maximo_schema}}.WORKORDER w
+FROM :catalog.:silver_schema.FAILUREREPORT fr
+JOIN :catalog.:silver_schema.WORKORDER w
     ON w.wonum = fr.wonum AND w.siteid = fr.siteid
-JOIN {{maximo_catalog}}.{{maximo_schema}}.ASSET a
+JOIN :catalog.:silver_schema.ASSET a
     ON a.assetnum = w.assetnum AND a.siteid = w.siteid
-LEFT JOIN {{maximo_catalog}}.{{maximo_schema}}.FAILURECODE fc
+LEFT JOIN :catalog.:silver_schema.FAILURECODE fc
     ON fc.failurecode = fr.failurecode
 WHERE w.woclass = 'WORKORDER'
   AND w.status IN ('COMP', 'CLOSE')
-  AND a.classstructureid = {{asset_class_id}}
+  AND a.classstructureid = :asset_class_id
   AND w.actfinish >= add_months(current_date(), -12)
 GROUP BY fr.failurecode, fc.description
 ORDER BY event_count DESC

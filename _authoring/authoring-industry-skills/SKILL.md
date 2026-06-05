@@ -216,6 +216,7 @@ The three things that make a skill worth more than generic docs:
 - **CLI auth:** in-workspace, Genie Code is already authenticated to the current workspace — don't add `--profile`. That flag is local-only.
 - Reference tables with `@catalog.schema.table`; discover with `/findTables`.
 - MCP tools must be fully qualified: `ServerName:tool_name`.
+- **SQL parameter placeholders use Databricks-native `:param` syntax**, not Mustache `{{param}}`. Examples: `:catalog.:silver_schema.WORKORDER`, `WHERE wonum = :wonum`, `IN (:open_statuses)`. Databricks SQL warehouses, AI/BI Dashboards, and Genie Agents bind these natively at execution time. Use `:silver_schema` / `:gold_schema` when the source has both layers; `:schema` alone when there's only one.
 
 ## Repo rule: writes to existing objects require explicit user permission
 

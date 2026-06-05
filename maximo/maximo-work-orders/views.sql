@@ -1,8 +1,8 @@
 -- =============================================================================
 -- Maximo Work Orders — Pre-joined Delta Views
 -- =============================================================================
--- Substitute {{maximo_catalog}}.{{maximo_schema}} with the customer's silver
--- catalog/schema (e.g. eam.maximo_silver) before running.
+-- Bind :catalog and :silver_schema (Databricks SQL parameters) to the customer's
+-- catalog and Silver schema (e.g. catalog=eam, silver_schema=maximo_silver) at execution.
 --
 -- These views encode the most-used joins so Genie (Code or Space) and humans
 -- both compose against a smaller, denormalized surface — per Databricks
@@ -19,7 +19,7 @@
 -- The workhorse view. Joins WORKORDER + ASSET + LOCATIONS + computes derived
 -- columns. Use this for almost any "current state" question.
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE VIEW {{maximo_catalog}}.{{maximo_schema}}.v_workorder_enriched
+CREATE OR REPLACE VIEW :catalog.:silver_schema.v_workorder_enriched
 COMMENT 'Enriched Maximo work-order header with current asset, location, and derived age. One row per WO.'
 AS
 SELECT
@@ -73,11 +73,11 @@ SELECT
         WHEN datediff(DAY, w.reportdate, current_date()) <= 90 THEN '61-90 days'
         ELSE '90+ days'
     END                                                              AS age_bucket
-FROM {{maximo_catalog}}.{{maximo_schema}}.WORKORDER w
-LEFT JOIN {{maximo_catalog}}.{{maximo_schema}}.ASSET a
+FROM :catalog.:silver_schema.WORKORDER w
+LEFT JOIN :catalog.:silver_schema.ASSET a
        ON a.assetnum = w.assetnum
       AND a.siteid   = w.siteid
-LEFT JOIN {{maximo_catalog}}.{{maximo_schema}}.LOCATIONS l
+LEFT JOIN :catalog.:silver_schema.LOCATIONS l
        ON l.location = w.location
       AND l.siteid   = w.siteid;
 
@@ -88,7 +88,7 @@ LEFT JOIN {{maximo_catalog}}.{{maximo_schema}}.LOCATIONS l
 -- WOSTATUS unpacked with time-in-state derived. One row per status transition
 -- per WO. Use for any "how long was X in INPRG" / "transition path" question.
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE VIEW {{maximo_catalog}}.{{maximo_schema}}.v_workorder_status_history
+CREATE OR REPLACE VIEW :catalog.:silver_schema.v_workorder_status_history
 COMMENT 'Work-order status transition history with time-in-state. One row per WOSTATUS transition.'
 AS
 SELECT
@@ -111,7 +111,7 @@ SELECT
         PARTITION BY s.wonum, s.siteid
         ORDER BY s.changedate
     )                                                                AS transition_seq
-FROM {{maximo_catalog}}.{{maximo_schema}}.WOSTATUS s;
+FROM :catalog.:silver_schema.WOSTATUS s;
 
 
 -- -----------------------------------------------------------------------------
@@ -120,7 +120,7 @@ FROM {{maximo_catalog}}.{{maximo_schema}}.WOSTATUS s;
 -- LABTRANS aggregated to the WO grain, with craft breakdown materialized as
 -- a map so a single row gives total + craft-level detail.
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE VIEW {{maximo_catalog}}.{{maximo_schema}}.v_labor_actuals
+CREATE OR REPLACE VIEW :catalog.:silver_schema.v_labor_actuals
 COMMENT 'Labor transactions aggregated to WO grain. One row per (wonum, siteid). Craft breakdown in hours_by_craft map.'
 AS
 SELECT
@@ -139,7 +139,7 @@ SELECT
             'hours', ROUND(lt.regularhrs + COALESCE(lt.premiumpayhours, 0), 2)
         ))
     )                                                       AS hours_by_craft
-FROM {{maximo_catalog}}.{{maximo_schema}}.LABTRANS lt
+FROM :catalog.:silver_schema.LABTRANS lt
 WHERE lt.transtype = 'WORK'
 GROUP BY lt.wonum, lt.siteid;
 
