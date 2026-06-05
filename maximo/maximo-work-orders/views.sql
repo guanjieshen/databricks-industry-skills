@@ -1,5 +1,5 @@
 -- =============================================================================
--- Maximo Work Management — Pre-joined Delta Views
+-- Maximo Work Orders — Pre-joined Delta Views
 -- =============================================================================
 -- Substitute {{maximo_catalog}}.{{maximo_schema}} with the customer's silver
 -- catalog/schema (e.g. eam.maximo_silver) before running.
@@ -143,24 +143,7 @@ FROM {{maximo_catalog}}.{{maximo_schema}}.LABTRANS lt
 WHERE lt.transtype = 'WORK'
 GROUP BY lt.wonum, lt.siteid;
 
-
--- =============================================================================
--- Optional: column-level comments to help Genie pick the right field.
--- Run AFTER creating the views above. Genie best practice — UC comments are
--- essential metadata.
--- =============================================================================
-
-ALTER VIEW {{maximo_catalog}}.{{maximo_schema}}.v_workorder_enriched ALTER COLUMN status
-    COMMENT 'Current work order status. For history, use v_workorder_status_history.';
-
-ALTER VIEW {{maximo_catalog}}.{{maximo_schema}}.v_workorder_enriched ALTER COLUMN woclass
-    COMMENT 'Filter to WORKORDER for normal WOs. Other values: PM, CHANGE, RELEASE, ACTIVITY.';
-
-ALTER VIEW {{maximo_catalog}}.{{maximo_schema}}.v_workorder_enriched ALTER COLUMN istask
-    COMMENT '1 = child task. Deduplicate to parent (PARENT column) for backlog counts.';
-
-ALTER VIEW {{maximo_catalog}}.{{maximo_schema}}.v_workorder_enriched ALTER COLUMN worktype
-    COMMENT 'Customer-configured. Common values: CM (corrective), PM (preventive), EM (emergency).';
-
-ALTER VIEW {{maximo_catalog}}.{{maximo_schema}}.v_workorder_enriched ALTER COLUMN siteid
-    COMMENT 'Site code. Always include in joins between Maximo tables.';
+-- UC column comments on these views are NOT registered here. They are owned by
+-- maximo-setup (which carries the canonical comment content in maximo_comments.json
+-- and applies it via the preview-then-apply script). If you want comments on the
+-- view columns, add them to maximo_comments.json and run the setup workflow.

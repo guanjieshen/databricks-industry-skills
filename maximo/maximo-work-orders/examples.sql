@@ -1,5 +1,5 @@
 -- =============================================================================
--- Maximo Work Management — Gold-Standard Query Examples
+-- Maximo Work Orders — Gold-Standard Query Examples
 -- =============================================================================
 -- Each block is a parameterized template that maps to a single analytical
 -- question. Substitute the placeholders:

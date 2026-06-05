@@ -1,4 +1,4 @@
-# Maximo Work Management — Schema Reference
+# Maximo Work Orders — Schema Reference
 
 All tables follow the IBM Maximo MBO model. Column lists below are the most commonly used columns, not exhaustive — customers often have additional extension columns. The MBO ↔ table mapping is 1:1 for these tables in standard deployments.
 
@@ -138,11 +138,12 @@ One row per planned item on a WO. Compare against `LABTRANS` (actual) for varian
 
 ## Other useful tables (referenced but not detailed here)
 
-- `LABOR` — labor master (`LABORCODE` → person, craft, default rate)
-- `PERSON` — person master (`PERSONID`)
-- `CRAFT` — craft codes
-- `WORKTYPE` — work-type domain values
-- `SYNONYMDOMAIN` — used to look up the customer's configured open-status synonyms (`STATUSIVAL` for the WOSTATUS domain)
+- `LABOR` — labor master (`LABORCODE` → person, craft, default rate). **For detail, load `maximo-labor-resources`** — it owns the labor master schema, qualifications, crews, and capacity.
+- `PERSON` — person master (`PERSONID`). See `maximo-labor-resources`.
+- `CRAFT` — craft codes. See `maximo-labor-resources`.
+- `WORKTYPE` — work-type domain values.
+- `SYNONYMDOMAIN` — used to look up the customer's configured open-status synonyms (`STATUSIVAL` for the WOSTATUS domain).
+- `LOCANCESTOR` / `ASSETANCESTOR` — closure tables for hierarchical rollups (e.g. "WOs under station X" / "WOs in region Y"). **For traversal patterns and `v_location_rollup_keys` / `v_asset_rollup_keys` Gold views, load `maximo-asset-hierarchy`.**
 
 ## Cardinality summary
 

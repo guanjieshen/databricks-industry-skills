@@ -7,7 +7,7 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- =============================================================================
--- Maximo Work Management — UC SQL Function (Metric UDF) DDL
+-- Maximo Work Orders — UC SQL Function (Metric UDF) DDL
 -- =============================================================================
 -- Substitute {{maximo_catalog}}.{{maximo_schema}} with the customer's silver
 -- catalog/schema, and {{metrics_schema}} with a Gold-layer schema for metric

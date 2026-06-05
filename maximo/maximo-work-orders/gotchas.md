@@ -1,4 +1,4 @@
-# Maximo Work Management — Gotchas
+# Maximo Work Orders — Gotchas
 
 ## Contents
 
