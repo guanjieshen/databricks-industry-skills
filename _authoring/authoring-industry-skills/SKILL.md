@@ -8,11 +8,15 @@ description: |
   (SME-substitute + SME-question-surfacer), frontmatter, description-writing,
   family tiers, progressive disclosure, Trusted Assets, UC comments,
   Genie-Code-native conventions. Triggers on: "create a skill", "author a new
-  skill", "new data-source family", "review this skill", "is this skill
-  discoverable", "fix the frontmatter", "contribute to industry-skills",
-  "skill best practices".
+  skill", "add a new module", "add a module to maximo", "build a new source
+  family", "scaffold a skill family", "new data-source family",
+  "review this skill", "audit a skill", "is this skill discoverable",
+  "my skill isn't triggering", "write a description Genie will match",
+  "fix the frontmatter", "promote skill content to UC comments",
+  "split responsibility between setup and skills",
+  "contribute to industry-skills", "skill best practices".
 metadata:
-  version: "0.2.0"
+  version: "0.2.1"
 ---
 
 # Authoring Industry Skills
@@ -21,9 +25,9 @@ The contributor standard for this repo. Load before creating, reviewing, or refa
 
 ## North star
 
-> Every skill in this repo fills source/domain knowledge gaps that **Databricks Genie Code** cannot infer from Unity Catalog + lineage alone. We never re-teach what Genie Code already does well — including what's already taught by the canonical platform skills.
+> Every skill in this repo fills source/domain knowledge gaps that **Databricks Genie Code** (the agent harness) cannot infer from Unity Catalog + lineage alone. We never re-teach what Genie Code already does well — including what's already taught by the canonical platform skills at [`databricks-solutions/ai-dev-kit/databricks-skills/`](https://github.com/databricks-solutions/ai-dev-kit/tree/main/databricks-skills).
 
-**Target harness: Genie Code specifically.** Skills follow the open Agent Skills format on disk, but content is written for Genie Code's capabilities, integrations, and deployment model. Within Genie Code, write **feature-agnostic** content — anchored to durable behaviors (deep UC integration, agentic data work, skill-driven extensibility, governance enforcement), not to today's API/UI mechanics (e.g. the Genie Spaces → Genie Agents rebrand changes the brand, not the concept; skills authored to the concept survive). Re-audit annually.
+Write **feature-agnostic** content anchored to Genie Code's durable behaviors (deep UC integration, agentic data work, skill-driven extensibility, governance enforcement). Features evolve — the Genie Spaces → Genie Agents rebrand changes the brand, not the concept; skills authored to the concept survive. Re-audit annually.
 
 ### The Genie taxonomy (be precise)
 
@@ -99,7 +103,7 @@ If you can't list ≥2, you are almost certainly missing domain content.
 | Tier | Skill | Role |
 |---|---|---|
 | Foundation | `<source>-overview` | Universal orientation (data model, module map, universal gotchas) |
-| Foundation | `<source>-setup` | **Customer-specific deployment knowledge** (split-responsibility — see below) |
+| Foundation | `<source>-setup` | **Customer-specific deployment knowledge.** Split-responsibility: UC comments (direct-read) + skill content (staging ground). See below |
 | Foundation | `<source>-data-engineering` | Silver/Gold modeling patterns (refs `databricks-spark-declarative-pipelines`) |
 | Foundation | `<source>-data-quality` | Diagnostic playbook for "this number looks wrong" |
 | Module | `<source>-<topic>` | One coherent analytical domain |
@@ -110,7 +114,20 @@ If you can't list ≥2, you are almost certainly missing domain content.
 
 `-setup` carries the **content** (the JSON spec for THIS customer). Defer UC `ALTER TABLE` mechanics to the platform-layer [`databricks-unity-catalog`](https://github.com/databricks-solutions/ai-dev-kit/tree/main/databricks-skills/databricks-unity-catalog) skill.
 
-**`-genie-agent` scaffolder** (if shipped, formerly `-genie-space`): encodes which UC objects to curate and what semantic descriptions / synonyms / Trusted UDFs make a Genie Agent answer this source's questions well. Defer creation mechanics to [`databricks-genie`](https://github.com/databricks-solutions/ai-dev-kit/blob/main/databricks-skills/databricks-genie/SKILL.md).
+**`-genie-agent` scaffolder** (formerly `-genie-space`): encodes which UC objects + semantic descriptions / synonyms / Trusted UDFs to curate for a Genie Agent. Defer creation mechanics to [`databricks-genie`](https://github.com/databricks-solutions/ai-dev-kit/blob/main/databricks-skills/databricks-genie/SKILL.md).
+
+## Quick start: a new module skill end-to-end
+
+The order an author should actually follow:
+
+1. **Read `<source>-overview/SKILL.md`** to anchor on the data model + module map
+2. **Draft the description** — the matcher. 4 elements (what+when, source+synonyms, technical identifiers, business phrasings); ≤1024 chars; 3rd person
+3. **List ≥2 SME-clarifying questions** for `## Questions to surface first` — definitions, thresholds, conventions with no defensible default. If you can't, you're missing domain content
+4. **Draft 3–5 inline top gotchas** in SKILL.md (full set goes in `gotchas.md`)
+5. **Add sibling files** with explicit "load when …" triggers: `schema.md`, `views.sql`, `metric_udfs.sql` (Trusted UDFs), `gotchas.md`, `examples.sql`
+6. **Add ≥3 evals** under `<source>/evals/` — including ≥1 that exercises a Question-to-surface ambiguity
+7. **Verify discovery in a NEW Agent-mode chat** — right skill loads on the trigger phrases, no false triggers on sibling skills
+8. **Pre-merge:** walk the full reviewer [checklist.md](checklist.md)
 
 ## The golden rule
 
@@ -188,12 +205,17 @@ Build foundation first, then modules. Every skill must pass: *"Would Genie behav
 
 ## Genie-Code-native value adds
 
+The three things that make a skill worth more than generic docs:
+
 1. **UC comments are the #1 quality lever.** Missing comments degrade SQL quality. Every family's `-setup` registers standardized UC comments. Ref: [Genie best practices](https://docs.databricks.com/aws/en/genie/best-practices).
 2. **Trusted Assets.** Ship canonical metrics as UC SQL functions (`metric_udfs.sql`) so Genie calls them as governed metrics instead of regenerating ad-hoc SQL. Ref: [Trusted Assets](https://docs.databricks.com/aws/en/genie/trusted-assets).
 3. **Workspace glossary skill.** `-setup` generates a workspace-tier skill mapping customer jargon → physical schema (the value-/concept-level layer UC comments can't capture).
-4. **CLI auth:** in-workspace Genie Code is already authenticated to the current workspace — don't add `--profile`. That flag is local-only.
-5. Tell users to reference tables with `@catalog.schema.table` and discover with `/findTables`.
-6. **MCP tools** must be fully qualified: `ServerName:tool_name`.
+
+### Genie Code conventions
+
+- **CLI auth:** in-workspace, Genie Code is already authenticated to the current workspace — don't add `--profile`. That flag is local-only.
+- Reference tables with `@catalog.schema.table`; discover with `/findTables`.
+- MCP tools must be fully qualified: `ServerName:tool_name`.
 
 ## Repo rule: writes to existing objects require explicit user permission
 
@@ -202,28 +224,6 @@ Build foundation first, then modules. Every skill must pass: *"Would Genie behav
 - **Writing scripts default to no-op preview** + require an explicit `--apply` flag. Pattern: [`../../maximo/maximo-setup/scripts/apply_uc_comments.py`](../../maximo/maximo-setup/scripts/apply_uc_comments.py).
 - **Skills show the preview/diff and ask for confirmation** before the apply step.
 - **Creating brand-new objects** in a scratch/demo schema is fine without this gate. The rule covers things the customer already owns.
-
-## New-skill workflow checklist
-
-```
-- [ ] Layer named: middle-layer source/domain-data (or documented exception)
-- [ ] ≥2 SME-clarifying questions identified for `## Questions to surface first`
-- [ ] Started from real expertise (worked example / real schema), not generic LLM knowledge
-- [ ] Folder named <source>-<topic>; SKILL.md present
-- [ ] Frontmatter: name + description + metadata.version (+ parent, + compatibility if CLI); NO tags:/owners:
-- [ ] Description: 3rd person, ≤1024 chars, source name + synonyms + table names + business phrasings
-- [ ] parent: <source>-overview (unless this IS the overview); no cross-layer parent chains
-- [ ] Body <500 lines; top gotchas inline; `## Questions to surface first` present; siblings with "load when…" triggers
-- [ ] Pre-flight and Questions-to-surface are distinct sections
-- [ ] Reference files >100 lines have ## Contents ToC
-- [ ] Metrics ship as Trusted Asset UC functions where applicable
-- [ ] Platform mechanics referenced via body link to ai-dev-kit/databricks-skills/, not duplicated
-- [ ] ≥3 evals under <source>/evals/ — including ≥1 that exercises a Question-to-surface ambiguity
-- [ ] Any write to existing tables/data/metadata is preview-by-default + gated on explicit user approval
-- [ ] Verified discovery in a NEW Agent-mode chat (right skill loads; no false triggers)
-```
-
-Full reviewer checklist: [checklist.md](checklist.md). Canonical mold: [`../../_template/`](../../_template/).
 
 ## Evals — build them before more content
 
