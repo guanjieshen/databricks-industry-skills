@@ -5,6 +5,35 @@
 > disclosure, Trusted Assets, and the new-skill checklist. This README is the
 > quick mold; that skill is the full rationale.
 
+## Before you fork: the north star
+
+> Every skill in this repo fills source/domain knowledge gaps that **Databricks Genie Code** cannot infer from Unity Catalog + lineage alone. We never re-teach what Genie Code already does well — including what's taught by the canonical platform skills at [`databricks-solutions/ai-dev-kit/databricks-skills/`](https://github.com/databricks-solutions/ai-dev-kit/tree/main/databricks-skills).
+
+**The target agent harness is Databricks Genie Code specifically.** Skills follow the open Agent Skills format on disk, but the content is written for Genie Code's capabilities, integrations, and deployment model.
+
+Be precise about which "Genie" is which:
+- **Genie Code** = the **agent harness** (agentic data-work tool — builds pipelines, trains ML, ships dashboards, scaffolds Genie Spaces). What loads these skills.
+- **Genie Spaces** = a **data product** Genie Code creates — a natural-language text-to-SQL interface to UC data. A `<source>-genie-space` skill helps Genie Code stand one up well.
+
+**Within Genie Code, write feature-agnostic content** — anchored to Genie Code's durable behaviors (deep UC integration, agentic data work, skill-driven extensibility), not to today's specific feature mechanics (Spaces API/UI shape, Trusted Assets registration, MCP integrations, background-agent specifics). Features evolve; the harness's core role endures.
+
+- ❌ Out of scope: how to build a Lakeflow pipeline, train an ML model, construct a dashboard, traverse lineage, use MLflow, configure access controls, or anything else Genie Code does natively. Reference [`databricks-solutions/ai-dev-kit/databricks-skills/`](https://github.com/databricks-solutions/ai-dev-kit/tree/main/databricks-skills) for platform mechanics. Also out of scope: anything tied to a specific Genie Code feature's current API/UI shape.
+- ✅ In scope: source-specific schema semantics, domain gotchas, **customer-specific deployment knowledge** (what `-setup` encodes), canonical metric formulas (Trusted UDFs), SME-clarifying questions, business-jargon → physical-schema mapping, source-specific composition patterns.
+
+### Operationalized via three commitments
+
+1. **Layer placement** — you're building middle-layer skills. Platform mechanics live at [`databricks-solutions/ai-dev-kit/databricks-skills/`](https://github.com/databricks-solutions/ai-dev-kit/tree/main/databricks-skills); business-process / outcome skills live in customer-specific or framework repos ([`ai-dev-kit`](https://github.com/databricks-solutions/ai-dev-kit), [`databricks-agent-skills`](https://github.com/databricks/databricks-agent-skills/tree/main/skills), or internal). This repo sits between them.
+2. **Two jobs per middle-layer skill** — every non-foundation skill must carry both:
+   - **SME-substitute** — schema/gotchas/views/Trusted UDFs so a non-expert produces correct work
+   - **SME-question-surfacer** — a required `## Questions to surface first` section listing ≥2 SME-reflex clarifying questions (definitions, thresholds, conventions) the user must disambiguate *before* the skill answers
+3. **Foundation + module tiers** — every family ships `-overview`, `-setup`, `-data-engineering`, `-data-quality` plus one module per analytical domain. **`-setup` is split-responsibility**: customer-specific facts that fit cleanly in a UC comment go into `<source>_comments.json` (Genie reads them directly); the rest lives in skill content and can graduate to UC comments later as the surface area grows.
+
+If you cannot list ≥2 SME-clarifying questions for a module skill you're scoping, you are almost certainly missing domain content — the questions are how you surface "what they don't know they don't know." Full framework + examples in [`_authoring/authoring-industry-skills/SKILL.md`](../_authoring/authoring-industry-skills/SKILL.md).
+
+Spot-check while authoring: would Genie Code, seeing this source's data for the first time in this organization's specific deployment, learn something *only* an SME would know? If yes — keep it. If you're explaining a Databricks primitive or a current Genie Code feature mechanic — link to the canonical platform skill and cut it from yours.
+
+## Fork the template
+
 Fork this folder to start a skill family for a new data source (e.g. `sap-pm/`, `oracle-eam/`).
 
 ```bash
@@ -15,7 +44,7 @@ Then customize:
 
 1. **`README.md`** — family overview, persona map, install order
 2. **`<source>-overview/`** — universal orientation (always-loaded foundation skill)
-3. Build the rest of the foundation + module skills following the same shape
+3. Build the rest of the foundation + module skills following the same shape — each module skill ships both SME-substitute content (schema/gotchas/views/UDFs) and an inline `## Questions to surface first` section
 
 ## Family layout convention
 
@@ -114,7 +143,9 @@ parent: <source>-overview          # omit only in the overview itself; use datab
 - [ ] Every description leads with source name + synonyms and includes table names AND business phrasings
 - [ ] Root `-overview` description is broad; module descriptions are narrow & distinctive
 - [ ] Body < 500 lines; top gotchas inline; reference files > 100 lines have a `## Contents` ToC
+- [ ] **Every non-foundation module skill has a `## Questions to surface first` section with ≥2 SME-clarifying questions** (the question-surfacing job; see *North star* above)
+- [ ] **`## Pre-flight` and `## Questions to surface first` are distinct sections** (session setup vs per-request ambiguity)
 - [ ] Metrics ship as Trusted Asset UC functions; `-setup` registers UC comments
-- [ ] ≥3 evals under `<source>/evals/`; discovery verified in a new Agent-mode chat
+- [ ] ≥3 evals under `<source>/evals/`; discovery verified in a new Agent-mode chat; at least one eval exercises a Question-to-surface ambiguity
 - [ ] Automation is in `scripts/`, guidance is in markdown
 - [ ] Reviewed against [`_authoring/authoring-industry-skills/checklist.md`](../_authoring/authoring-industry-skills/checklist.md)

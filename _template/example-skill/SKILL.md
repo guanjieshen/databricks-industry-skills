@@ -38,15 +38,31 @@ so the 3–5 highest-value, non-obvious corrections live in SKILL.md:
 - Gotcha 2 — …
 - Read [gotchas.md](gotchas.md) before writing non-trivial joins.
 
-## Pre-flight checks (ask before the first action)
+## Questions to surface first (REQUIRED for middle-layer skills)
 
-Cache the answers for the rest of the session — don't re-ask.
+These are the **SME-reflex clarifying questions** the agent must raise to the
+user *before* answering — definitions, thresholds, and conventions a non-expert
+would not know are ambiguous. List ≥2.
+
+Distinct from `## Pre-flight` (one-time session setup, catalog/schema) — these
+are per-request ambiguity. Examples of the shape:
+
+- "X has 3+ valid definitions — which does your organization use?" (e.g. MTBF, PM compliance, "open" status set)
+- "The default threshold here is Y — confirm or override?" (e.g. 90-day aging cutoff, SMRP 10% tolerance)
+- "Z is classified by ID, not name — which IDs are you targeting?" (e.g. asset class hierarchy IDs)
+
+If you cannot list ≥2 such questions for this skill, you are almost certainly
+missing domain content — most ambiguity-prone business metrics have at least one.
+
+## Pre-flight (per session, ask once and cache)
+
+One-time session configuration. Cache the answers; don't re-ask.
 
 1. **Catalog/schema** — "Which Unity Catalog catalog/schema holds your data?"
-2. **Shape** — "Standard shape, or has your ingestion reshaped the tables?"
+2. **Glossary skill** — Is a `<customer>-<source>-glossary` workspace skill installed? If yes, prefer it for business-term resolution.
+3. **Shape** — "Standard shape, or has your ingestion reshaped the tables?"
 
-Consult the workspace glossary skill if one is installed. If a business term is
-ambiguous, **ask before guessing**.
+If a business term is ambiguous and no glossary covers it, **ask before guessing**.
 
 ## Workflow
 
