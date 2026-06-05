@@ -72,32 +72,27 @@ Be explicit. Resolve new questions in this priority order:
 2. **Pre-joined view** — compose from [views.sql](views.sql).
 3. **Raw tables** — only when the view layer doesn't cover the join shape; explain why.
 
-## Trusted Assets (if this skill ships metrics)
+## What's in this skill
 
-Ship canonical metrics as UC SQL functions in [metric_udfs.sql](metric_udfs.sql)
-so Genie Spaces call them as *certified, governed metrics* rather than ad-hoc SQL.
-Register via the family `-setup` skill or by running the file, then reference the
-functions by name.
+Tell Genie *when* to load each sibling file — not just that it exists:
 
-## Genie Code conventions
-
-- In-workspace, the CLI is already authenticated to the current workspace — don't
-  pass `--profile`. Use it only for local runs against `~/.databrickscfg`.
-- Reference tables with `@catalog.schema.table`; discover with `/findTables`.
-- Skills load only in Agent mode; after editing a skill, start a new chat.
+- [schema.md](schema.md) — **load when** joining tables or selecting columns. Full data model reference. (Add a `## Contents` ToC if >100 lines.)
+- [gotchas.md](gotchas.md) — **load before** writing non-trivial joins. Extended versions of the inline top gotchas + the long-tail traps.
+- [examples.sql](examples.sql) — **load when** the user's question matches a known pattern.
+- [views.sql](views.sql) — DDL for pre-joined views. Registered once by the family's `-setup` skill (not run from this skill).
+- [metric_udfs.sql](metric_udfs.sql) — Trusted Asset UC SQL functions. Genie calls them as governed metrics. Registered once via `-setup`.
 
 ## What NOT to do
 
-- Don't fabricate columns or tables not in [schema.md](schema.md).
-- Don't proceed when a business term is ambiguous — ask first.
-- Don't write UC comments or run destructive SQL without showing the diff first.
+- Don't fabricate columns or tables not in [schema.md](schema.md). If the user mentions a custom column, check the workspace glossary or ask.
+- Don't proceed when a business term is ambiguous — surface the question (see *Questions to surface first*) instead of guessing.
+- **Don't write or alter UC comments / table metadata from this skill** — UC comments are owned by `-setup` (preview-then-apply, gated on explicit user approval).
+- **Don't re-teach platform mechanics** (Lakeflow, dashboards, UC, MLflow, …). Reference the canonical skill in [`ai-dev-kit/databricks-skills/`](https://github.com/databricks-solutions/ai-dev-kit/tree/main/databricks-skills); don't duplicate.
 - Don't include secrets or raw PII values in any generated artifact.
 
-## References
+## Composes with
 
-- [schema.md](schema.md) — full data model reference (add a `## Contents` ToC if >100 lines)
-- [gotchas.md](gotchas.md) — error-prone joins, common mistakes
-- [examples.sql](examples.sql) — parameterized gold-standard queries
-- [views.sql](views.sql) — DDL for reusable views
-- [metric_udfs.sql](metric_udfs.sql) — Trusted Asset UC functions
-- Authoritative external docs (link out)
+- **`<source>-overview`** — baseline data-model literacy + universal gotchas. Always load first.
+- **`<source>-setup`** — registers the views in [views.sql](views.sql) and Trusted UDFs in [metric_udfs.sql](metric_udfs.sql). Never run those scripts from this skill — defer to setup's preview-then-apply workflow.
+- **Other module skills** — name them explicitly. *"For X questions, load `<source>-other-module`."*
+- **Platform skills** — when the user's request crosses into pipeline / dashboard / UC mechanics, reference the canonical platform skill (e.g. [`databricks-genie`](https://github.com/databricks-solutions/ai-dev-kit/blob/main/databricks-skills/databricks-genie/SKILL.md), [`databricks-spark-declarative-pipelines`](https://github.com/databricks-solutions/ai-dev-kit/tree/main/databricks-skills/databricks-spark-declarative-pipelines)).

@@ -1,0 +1,19 @@
+{
+  "name": "example-eval-open-status-clarification",
+  "description": "Validates that <source>-work-orders surfaces the open-status-set clarifying question instead of guessing.",
+  "query": "What's our open work-order backlog by site?",
+  "expected_skill": "example-work-orders",
+  "expected_behavior": [
+    "loads the example-work-orders skill (and example-overview as parent)",
+    "before answering, surfaces the clarifying question: which STATUS values count as 'open' in this organization? Defaults to ('WAPPR','APPR','INPRG','WSCH','WMATL') unless the user / glossary says otherwise",
+    "filters WOCLASS = 'WORKORDER' AND ISTASK = 0",
+    "groups by SITEID",
+    "calls the open_wo_count Trusted UDF if registered; otherwise generates equivalent SQL against v_workorder_enriched"
+  ],
+  "anti_behavior": [
+    "must NOT answer without surfacing the open-status clarifying question",
+    "must NOT count rows where WOCLASS != 'WORKORDER' (PMs, CHANGE records, etc.)",
+    "must NOT count child tasks (ISTASK = 1) as separate WOs",
+    "must NOT join WORKORDER to other tables without SITEID in the join predicate"
+  ]
+}

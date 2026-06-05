@@ -1,0 +1,18 @@
+{
+  "EXAMPLE_TABLE": {
+    "table_comment": "REPLACE — one-paragraph description of what this table holds, its grain, and the most important caveat (e.g. 'WORKORDER is the work-order header — one row per WO, current state only. Filter to WOCLASS = WORKORDER for normal WOs.').",
+    "columns": {
+      "ID": "REPLACE — what the column means + valid values + the gotcha (e.g. 'Unique within SITEID. Always include SITEID in joins.').",
+      "STATUS": "REPLACE — current status. For history, use the parallel *STATUS table.",
+      "SITEID": "REPLACE — site code. Composite-key partner for ID."
+    }
+  },
+  "EXAMPLE_HISTORY_TABLE": {
+    "table_comment": "REPLACE — one row per status change. Use this (not EXAMPLE_TABLE) for any 'history' or 'time-in-state' question.",
+    "columns": {
+      "CHANGEDATE": "REPLACE — when the change was made.",
+      "STATUS": "REPLACE — the status this row represents.",
+      "CHANGEBY": "REPLACE — user who made the change."
+    }
+  }
+}
