@@ -96,6 +96,31 @@ Be precise: **Genie Code** is the agent harness; **Genie Spaces** is a text-to-S
 - [ ] No write to existing tables/data/metadata happens as a side effect
 - [ ] Writing scripts default to preview (no-op) and require an explicit `--apply`-style flag
 - [ ] The skill shows the preview/diff and asks for explicit user approval before applying
+- [ ] **For `-setup` skills**: UC comment registration is in an `## Optional` section, NEVER offered spontaneously
+- [ ] **For `-setup` skills**: ambiguous customer responses ("okay" / "looks good") MUST NOT be interpreted as approval to apply UC writes — require unambiguous affirmation
+- [ ] **For `-setup` skills**: default Genie Code workspace instructions are READ only in Pre-flight (to skip already-documented questions); writing to them is a separate opt-in flow with the same vetting as UC comments
+
+## `-setup` skills — additional checklist
+
+(Applies only to `<source>-setup` skills — the customer-deployment encoding pattern.)
+
+- [ ] Phase 0 has dual-path implementation: Python preferred (`introspect_schema.py`); SQL fallback (`profile_queries.sql`) for warehouse-only sessions
+- [ ] Phase 0 profile detects: module presence + recency (MAX(date) per module's primary table) + cross-table population + customization signals (workflows, calendars, currencies, criticality scheme, assignment model, asset specs)
+- [ ] Activity heatmap output uses the **4-verdict scheme** (`ACTIVE` / `DORMANT` / `NOT_INGESTED` / `INSUFFICIENT_DATA`); DORMANT threshold = 365 days
+- [ ] `module → primary table → date-column` map defined for this source (mirrors the Maximo example in `authoring-industry-skills` SKILL.md §"Building a -setup skill")
+- [ ] Source's overview-as-ledger: cross-cutting facts captured in `<source>-overview`'s universal-gotchas section; `-setup` captures customer-specific *values* within those mechanics, not the mechanics themselves
+- [ ] Phase 0.5 reads default Genie Code workspace instructions (if any) to pre-populate the profile and skip already-documented interview questions
+- [ ] Interview opens with **Q0 (familiarity check)** before any batch questions
+- [ ] Every interview question carries `Tier:` / `Trigger:` / `Skip behavior:` / `Records to:` headers
+- [ ] Batch-opening "Concepts in this batch" sidebars present; suppressed when `<source>_familiarity` is `Expert` / `Familiar`
+- [ ] Universal skip-defer affordance documented; skipped questions → `answers.followups` with `owner: <role>`
+- [ ] Persistent state lives in `<skills-root>/<source>/<customer>-<source>-glossary/` — all artifacts co-located
+- [ ] `history/` timestamped snapshots in place; `--no-history` flag for git-versioned customers
+- [ ] Phase 3 (UC comment registration) is in an `## Optional` section, **NOT** in the default `## Workflow`
+- [ ] Phase 3 documents the 4-checkpoint vetted flow (Preview → Unambiguous approval → Customer executes → Post-apply verification)
+- [ ] Phase 3 has both Python and SQL paths: `apply_uc_comments.py --emit-sql` generates + a committed `apply_uc_comments.sql` artifact ships
+- [ ] If the skill also writes to default Genie Code instructions, that's an `## Optional` section with the same 4-checkpoint vetting
+- [ ] At least 4 evals: Expert path / Limited-or-None path / data-signal trigger fired (e.g. multi-currency) / mostly-skip path
 
 ## Evals & verification
 - [ ] ≥3 eval cases added under `<source>/evals/`

@@ -15,7 +15,7 @@ description: |
   jargon".
 compatibility: Requires databricks CLI >= v0.294.0 (experimental aitools)
 metadata:
-  version: "0.2.0"
+  version: "0.3.0"
 parent: maximo-overview
 ---
 
@@ -31,12 +31,22 @@ Out of the box Genie doesn't know *your* Maximo — it guesses at table/column m
 
 ## What it creates, and where
 
-Two assets:
+**The default flow creates one asset** — a workspace-tier glossary skill at `<skills-root>/maximo/<customer>-maximo-glossary/`. **UC comment registration is opt-in only** (see *Optional: UC comment registration* below). UC writes go through a heavily vetted flow; setup never offers them automatically.
 
-1. **A workspace-tier glossary skill** at `<skills-root>/maximo/<customer>-maximo-glossary/SKILL.md` — i.e. **inside the same `maximo/` group folder as the rest of the family**, so the glossary and the skills that read it share one discovery regime. (`<skills-root>` = `/Workspace/.assistant/skills` for a workspace install, or `/Users/<email>/.assistant/skills` for a user install.) It maps customer business terms ("Mainline", "Region", "centrifugal pump") to Maximo schema (SITEIDs, LOCATION hierarchy levels, CLASSSTRUCTUREIDs).
-2. **UC table and column comments** registered on the Maximo Silver tables, using standardized Maximo MBO descriptions plus any customer-specific notes.
+```
+<skills-root>/maximo/<customer>-maximo-glossary/
+├── SKILL.md                ← the Genie-loaded glossary skill (rendered view)
+├── answers.json            ← structured source of truth (re-run input)
+├── draft_profile.json      ← most-recent Phase 0 profile
+├── activity_report.md      ← most-recent Module Activity Heatmap
+└── history/                ← timestamped snapshots; --no-history disables
+```
 
-Why both: the glossary handles **value-level and concept-level** mapping (jargon → schema). UC comments handle **column-level** semantics (what does this column mean). Both are essential for Genie quality per [Databricks Genie best practices](https://docs.databricks.com/aws/en/genie/best-practices).
+(`<skills-root>` = `/Workspace/.assistant/skills` for a workspace install, or `/Users/<email>/.assistant/skills` for a user install.)
+
+**What the glossary carries**: customer business terms ("Mainline", "Region", "centrifugal pump") mapped to Maximo schema (SITEIDs, LOCATION hierarchy levels, CLASSSTRUCTUREIDs); customer-specific values within the universal mechanics owned by `maximo-overview` (open-status set, app-server timezone, SYNONYMDOMAIN renamings); and customer-specific customization knowledge (workflows, criticality scheme, failure-code scheme, currency, assignment model, custom columns).
+
+**If the customer also wants UC table/column comments registered** on the Maximo Silver tables — they must explicitly request it. That's a separate, opt-in flow with multi-checkpoint vetting (the *Optional* section below). UC writes modify customer-owned tables and must never run as a side effect of the default setup.
 
 ## When to use
 
@@ -51,6 +61,7 @@ Why both: the glossary handles **value-level and concept-level** mapping (jargon
 1. **Catalog/schema location**: "Which catalog/schema holds your Maximo Silver layer?" (e.g. `eam.maximo_silver`)
 2. **Workspace customer name**: "What short name should we use for your organization in skill filenames?" (e.g. `enbridge`, `acme-energy`). This becomes part of the generated glossary skill name.
 3. **Output scope**: workspace-wide (admin) or user-scoped?
+4. **Check default Genie Code instructions**: if the workspace already has default Genie Code instructions configured (Workspace Settings → Genie Code → Default instructions), **read them first**. Anything documented there — catalog/schema, base currency, timezone, open-status set, customer jargon — is already in Genie's per-turn context and should NOT be re-asked. Use them to pre-populate `draft_profile.json` and skip the corresponding interview questions. If no default instructions exist, proceed normally.
 
 ## Questions to surface first
 
@@ -114,44 +125,141 @@ The script writes a skill file using [glossary_template.md](glossary_template.md
 
 > **If you can't run Python here:** write the glossary `SKILL.md` **directly** from [glossary_template.md](glossary_template.md), filling it with the confirmed interview answers — the script only renders that template. Keep the standard frontmatter (`name`, `description`, `metadata.version`, `parent: maximo-overview`) and **record every unconfirmed item as `_unknown_ — confirm with <role>`** rather than guessing. Include a short follow-up table (who confirms what) so the flagged items aren't lost.
 
-### Phase 3 — Register UC table/column comments on Silver (requires explicit approval)
+## When setup completes — summarize this for the user
 
-UC comments are Genie's #1 quality lever (missing comments degrade SQL). But this **modifies existing tables**, so per the repo rule it needs the user's **explicit permission**. **Preview first (writes nothing) → show the statements → get approval → only then apply:**
+Close with a clear recap of **what was created, where, and the value** — then present next steps as **options**, not an automatic hand-off.
 
+**Assets created** (all co-located in the customer's glossary folder)
+
+| Asset | Where | Value |
+|---|---|---|
+| `<customer>-maximo-glossary` skill (`SKILL.md`) | `<skills-root>/maximo/<customer>-maximo-glossary/SKILL.md` | Genie now answers in the customer's vocabulary; auto-loads for any Maximo question |
+| `answers.json` (structured source of truth) | same folder | Re-run reads this directly. Audit/diff target |
+| `draft_profile.json` | same folder | Most-recent Phase 0 profile. Used for diffing on re-run |
+| `activity_report.md` | same folder | Most-recent Module Activity Heatmap (per-module verdicts + evidence) |
+| `history/<timestamp>_*` snapshots | same folder | Versioned audit trail. `--no-history` disables for git-versioned customers |
+
+**What this already unlocks (no further steps required):** every other `maximo-*` skill now resolves the customer's sites, asset classes, open-status set, worktypes, customizations, and custom columns — so backlog/reliability/cost/PM questions are correct today.
+
+**Optional next steps — suggest, don't assume. Never auto-advance:**
+- Ask Maximo questions now (the glossary already improves answers significantly) — usually the right immediate move.
+- **Optionally**, register UC table/column comments via the *Optional: UC comment registration* section. Run **only if the customer explicitly asks** — never offer as a default next step.
+- **Optionally**, build a curated **Genie Space** with `maximo-genie-space` *if the user wants a shareable NL surface*. Offer it; don't start it automatically.
+- Follow up on the flagged `_unknown_` items with the right owners (reliability / integrity / compliance / planners).
+
+> Do **not** auto-advance to Genie Space creation. Setup stands on its own; only build the Space when the user asks.
+>
+> Do **not** auto-advance to UC comment registration either. UC writes modify customer-owned tables and only run on explicit user request through the vetted flow below.
+
+## Optional: UC comment registration (opt-in only, multi-checkpoint vetted)
+
+**This section runs ONLY when the user explicitly requests UC comment registration.** Setup never offers it as an automatic next step. *"Set up complete — would you like to register UC comments?"* is the wrong pattern; the user must ask first ("register the comments", "apply the column metadata", or equivalent).
+
+UC comments are Genie's #1 SQL-quality lever, but they modify customer-owned tables. Per the repo rule, writes to existing UC objects must run through a heavily vetted, multi-checkpoint flow. Four non-skippable checkpoints:
+
+### Checkpoint 1 — Preview (writes nothing)
+
+Generate the full COMMENT/ALTER statement list. Show the customer:
+- **Scope**: count of tables + columns to be modified, scoped to ACTIVE modules from the heatmap (use `--scope all` to include DORMANT modules; default is ACTIVE-only).
+- **Diff**: which tables already have comments (would be **overwritten**) vs which are fresh.
+- **Statements**: the full `COMMENT ON TABLE` / `ALTER TABLE … ALTER COLUMN COMMENT` SQL.
+
+**Python preferred** (default when Python is attached):
 ```bash
-# 1) PREVIEW — prints the COMMENT/ALTER statements, writes NOTHING:
 python scripts/apply_uc_comments.py \
   --catalog <catalog> --schema <silver-schema> \
-  --comments-file scripts/maximo_comments.json
+  --comments-file scripts/maximo_comments.json \
+  --emit-sql apply_uc_comments.sql
+# Prints the statements; writes apply_uc_comments.sql for SQL Editor execution.
+# No UC writes. No --apply means no execution.
+```
 
-# 2) ONLY after the user reviews and explicitly approves:
+**SQL fallback** (when Python isn't attached — e.g. Genie Code launched from the UC data page on a Pro warehouse): open the committed [`scripts/apply_uc_comments.sql`](scripts/apply_uc_comments.sql), bind `:catalog` / `:silver_schema`, review in SQL Editor. **The committed copy is generated from `maximo_comments.json` via the `--emit-sql` flag** — they always match.
+
+### Checkpoint 2 — Unambiguous verbal approval
+
+After showing the preview, ask explicitly: *"This will write {N} table comments and {M} column comments to your Unity Catalog. Do you want me to apply?"*
+
+**Interpret only unambiguous affirmation as approval.** Words like:
+- ✅ "yes apply", "go ahead and apply", "apply them", "yes, run it"
+
+NOT these:
+- ❌ "looks good", "okay", "sounds fine", "this looks right" — these are **acknowledgments of the preview**, not approval to write. Re-ask explicitly.
+
+If the customer hesitates or says "let me think" — defer. Don't proceed.
+
+### Checkpoint 3 — Customer executes
+
+The customer chooses their path:
+
+**Python path** (default, when Python is attached):
+```bash
 python scripts/apply_uc_comments.py \
   --catalog <catalog> --schema <silver-schema> \
   --comments-file scripts/maximo_comments.json \
   --apply --warehouse-id <id>
 ```
 
-The shipped `maximo_comments.json` covers the standard MBO-backed tables; extend it from the glossary for the customer's renamed/custom tables. **Never run `--apply` without explicit approval.**
+**SQL fallback** (when Python isn't attached): the customer runs `apply_uc_comments.sql` themselves in SQL Editor against the appropriate warehouse.
 
-## When setup completes — summarize this for the user
+**The setup skill never auto-executes the apply step.** The customer triggers it themselves with explicit affirmation from Checkpoint 2.
 
-Close with a clear recap of **what was created, where, and the value** — then present next steps as **options**, not an automatic hand-off.
+### Checkpoint 4 — Post-apply verification
 
-**Assets created**
-| Asset | Where | Value |
-|---|---|---|
-| `<customer>-maximo-glossary` skill | `<skills-root>/maximo/<customer>-maximo-glossary/SKILL.md` | Genie now answers in the customer's vocabulary; auto-loads for any Maximo question |
-| UC table/column comments | On the Silver tables in `<catalog>.<schema>` | Genie's #1 SQL-quality lever — every `maximo-*` skill writes more accurate SQL |
-| `draft_profile.json` + confirmed `answers.json` | your working dir | The evidence behind the glossary; re-run input |
+Confirm comments landed:
 
-**What this already unlocks (no further steps required):** every other `maximo-*` skill now resolves the customer's sites, asset classes, open-status set, worktypes, and custom columns — so backlog/reliability/cost/PM questions are correct today.
+```sql
+SELECT table_name, column_name, comment
+FROM   system.information_schema.columns
+WHERE  table_catalog = :catalog AND table_schema = :silver_schema
+  AND  comment IS NOT NULL
+ORDER  BY table_name, ordinal_position;
+```
 
-**Optional next steps — suggest, don't assume:**
-- Ask Maximo questions now (the glossary + comments already improve answers) — usually the right immediate move.
-- **Optionally**, build a curated **Genie Space** with `maximo-genie-space` *if the user wants a shareable NL surface over this data*. Offer it; don't start it automatically.
-- Follow up on the flagged `_unknown_` items with the right owners (reliability / integrity / compliance / planners).
+Surface any rows where comments are missing or unexpected. If a write failed silently, the customer needs to know.
 
-> Do **not** auto-advance to Genie Space creation. Setup stands on its own; only build the Space when the user asks.
+### Path-selection rule (mirrors Phase 0)
+
+- **Default**: Python via `apply_uc_comments.py`. Used whenever Python is attached.
+- **Fallback**: committed `apply_uc_comments.sql` artifact. Used only when Python isn't available.
+- Detect which path is available; prefer Python; never silently downgrade.
+
+### Scoping by module activity
+
+By default the preview includes comments for ACTIVE modules only (per the heatmap in `activity_report.md`). DORMANT modules are skipped — customers who want comprehensive coverage can pass `--scope all` to include them. Either way, the customer sees the full scope at Checkpoint 1 before approving.
+
+The shipped `maximo_comments.json` covers the standard Maximo MBO-backed tables; extend it from the glossary for the customer's renamed/custom tables.
+
+## Optional: write a summary to default Genie Code instructions (opt-in only, vetted)
+
+**This section runs ONLY when the user explicitly requests it.** Default Genie Code instructions are workspace-level configuration that Genie reads at every session — distinct from skill loading. Writing to them is a customer-owned workspace-config change, so it goes through the same vetting flow as UC writes.
+
+**Why offer it**: default instructions persist across sessions and apply even when no skill is loaded. A short summary of the customer's key facts (catalog/schema, base currency, timezone, open-status set, glossary skill name) in default instructions means Genie has those facts in *every* turn — including turns that don't match the glossary skill's description.
+
+**The summary the customer might want written** (none of this is auto-applied):
+```
+Maximo (v0.3.0 setup):
+- Silver data: <catalog>.<silver_schema>
+- App-server timezone: <tz>
+- Open-status set: <list>
+- Multi-currency base: <currency>
+- Glossary skill: <customer>-maximo-glossary (loaded for Maximo questions)
+```
+
+### Vetted flow (mirrors UC comments)
+
+1. **Preview**: show the customer the proposed summary text. Show diff against existing default instructions if any.
+2. **Unambiguous approval**: same rule as Phase 3 — "yes apply" or equivalent; "looks good" / "okay" is not approval.
+3. **Customer applies**: customer pastes the summary into Workspace Settings → Genie Code → Default instructions themselves. **The setup skill never auto-writes workspace config.** (Databricks doesn't expose a stable API for this at the moment of writing; even if it did, the same explicit-approval rule would apply.)
+4. **Post-apply verification**: in a fresh Genie Code chat, ask a question that should reference the summary (e.g. "what catalog is our Maximo data in?") and confirm the answer reflects the new default instructions.
+
+### When NOT to write to default instructions
+
+- When the workspace serves multiple distinct customers / business units — default instructions are workspace-wide and would conflict.
+- When the customer already maintains workspace-wide Genie Code instructions for other purposes — adding Maximo-specific content might clutter.
+- When the customer prefers to keep all customer-specific knowledge inside skills (so it's git-trackable in their fork) — default instructions are workspace-config, not git-tracked.
+
+Default to "no" unless the customer is single-deployment + wants Maximo facts visible in every turn.
 
 ## Re-running (refresh, not rebuild)
 
@@ -182,8 +290,11 @@ Trigger a re-run on: new sites/asset classes/custom columns, or when the custome
 ## What NOT to do
 
 - Don't skip Phase 0 — asking the customer what the data already shows wastes the expert's time and misses customizations the data would reveal.
-- The profile **proposes**; the human **confirms**. Never finalize a profiled candidate (the open-status set, the worktype mapping, a custom column's meaning, the industry/usage profile) without the customer validating it.
-- **Never apply UC comments (or any change to existing tables) without explicit user approval** — run `apply_uc_comments.py` with no `--apply` to preview, show the statements, and only run `--apply` after they confirm. (Repo rule: writes to existing objects require explicit permission.)
+- The profile **proposes**; the human **confirms**. Never finalize a profiled candidate (open-status set, worktype mapping, custom column meaning, industry/usage profile) without the customer validating it.
+- **Never offer UC comment registration as an automatic next step** when setup completes. The *Optional: UC comment registration* section runs ONLY when the user explicitly requests it.
+- **Never interpret "okay" / "looks good" / "sounds fine" / "this looks right" as approval to apply UC writes.** Those are acknowledgments of the preview, not approval to write. Require unambiguous affirmation ("yes apply", "go ahead and apply", or equivalent). When in doubt, re-ask.
+- **Never apply UC comments (or any change to existing tables) without explicit user approval.** Preview is the default; `--apply` runs only after the customer's verbal go-ahead at Checkpoint 2. (Repo rule: writes to existing objects require explicit permission.)
+- **Never auto-write to default Genie Code workspace instructions.** Setup may *read* default instructions in Pre-flight (to avoid re-asking what's already documented) but never writes to them without the same vetted opt-in flow as UC comments. The customer pastes the summary into Workspace Settings themselves after explicit approval.
 - Don't fabricate mappings if the customer doesn't know — write `_unknown_ — needs validation from <role>` and move on.
 - Don't ask the full interview at once. Batch 2–3 questions, accept the answers, then continue.
 - **Don't re-teach universal mechanics in the glossary or comments.** SITEID composite keys, `WOCLASS` filtering, `ISTASK` tasks-vs-child-WOs, status-is-a-synonym-domain (`SYNONYMDOMAIN`), `HISTORYFLAG`, and app-server-timezone datetimes are owned by [maximo-overview](../maximo-overview/) — capture the customer-specific *values* (their open set, their TZ, their renamed synonyms), not the mechanic itself.

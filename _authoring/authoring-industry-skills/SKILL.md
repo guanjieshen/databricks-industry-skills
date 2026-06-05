@@ -116,6 +116,115 @@ If you can't list ≥2, you are almost certainly missing domain content.
 
 **`-genie-agent` scaffolder** (formerly `-genie-space`): encodes which UC objects + semantic descriptions / synonyms / Trusted UDFs to curate for a Genie Agent. Defer creation mechanics to [`databricks-genie`](https://github.com/databricks-solutions/ai-dev-kit/blob/main/databricks-skills/databricks-genie/SKILL.md).
 
+## Building a `-setup` skill (the customer-deployment encoding pattern)
+
+The `-setup` skill is the most complex shape in a source family. Its job: encode the customer's specific deployment (their conventions, terminology, customizations) so every other module-tier skill in the family answers correctly *for this customer's data*. The Maximo family's `maximo-setup` v0.3.0 is the canonical implementation; the patterns below transfer to SAP PM, Oracle EAM, Salesforce, ServiceNow, OSIsoft PI, etc.
+
+### The overview-as-ledger pattern
+
+The source's `<source>-overview` is the **canonical home for cross-cutting facts** that every module-tier skill reuses (composite-key joins, status semantics, history vs current state, timezone conventions, hidden-record flags). Modules **reference** these from overview rather than restating them. The `-setup` skill captures the customer-specific *values* within those mechanics — the customer's open-status set, their app-server timezone, their renamed status synonyms — not the mechanics themselves.
+
+For Maximo: SITEID composite keys, `WOCLASS` filtering, `ISTASK` tasks-vs-child-WOs, `SYNONYMDOMAIN` status resolution, `HISTORYFLAG`, app-server-timezone datetimes. Equivalent universal-fact catalogues exist per source.
+
+### Phase architecture
+
+| Phase | Purpose | Default? |
+|---|---|---|
+| **0 — Profile** | Read-only inspection of the customer's data. Python preferred (`introspect_schema.py`); SQL fallback (`profile_queries.sql`) for warehouse-only sessions. Output: `draft_profile.json` + `activity_report.md` | ✅ |
+| **0.5 — Read default Genie Code instructions** | If the workspace has default Genie Code instructions, parse for any pre-documented facts (catalog, timezone, currency, jargon) and skip the corresponding interview questions | ✅ |
+| **1 — Interview** | Adaptive, conversational gap-confirmation grounded in the profile. Captures `answers.json` | ✅ |
+| **2 — Generate glossary** | Render `<customer>-<source>-glossary/SKILL.md` from `answers.json`. Co-located with `answers.json`, `draft_profile.json`, `activity_report.md`, and timestamped `history/` snapshots | ✅ |
+| **3 — UC comment registration** | Modifies customer-owned UC objects | ❌ **Opt-in only**, multi-checkpoint vetted (see below) |
+| **4 — Write summary to default Genie Code instructions** | Modifies customer-owned workspace config | ❌ **Opt-in only**, same vetted flow as Phase 3 |
+
+### 4-verdict module activity detection
+
+Customers often ingest the entire source schema but only actively use a few modules. Activity detection scopes setup output to what's actually in use.
+
+| Verdict | Definition | Default behavior |
+|---|---|---|
+| `ACTIVE` | Indicator tables present, rows > 0, MAX(date) within 365 days | Include in interview, glossary, Phase 3 preview |
+| `DORMANT` | Tables present, rows > 0, MAX(date) > 365 days | Skip by default. `--include-all` overrides. Surface as confirm-or-include in interview |
+| `NOT_INGESTED` | Indicator table missing | Silently skipped |
+| `INSUFFICIENT_DATA` | No datetime column / sparse data | Treat as ACTIVE; surface for confirmation |
+
+The verdict scheme needs a **module → primary table → date-column map** per source. For Maximo, that's `WORKORDER.STATUSDATE` for work_management, `PM.LASTCOMPDATE` for preventive_maintenance, etc. Each source has equivalent mappings.
+
+Cross-table population probes (e.g. `% of WORKORDER with PMNUM populated`) feed the heatmap's evidence column and surface as glossary caveats when low.
+
+### Adaptive interview design
+
+Six design principles (apply universally):
+
+1. **Data tells us what it can.** Never ask what the profiler can answer.
+2. **Tier by correctness blast radius.** Tier 1 always asked; Tier 2 quality; Tier 3 edge/specialized.
+3. **Default to skip, not interrogate.** Questions fire only when their trigger evaluates true.
+4. **Skip-defer is always a valid answer.** Skipped items → `answers.followups` with `owner: <role>`. Customer is **never blocked**.
+5. **Re-runs close gaps over time.** Delta-refresh revisits unconfirmed items.
+6. **One accessible voice; explain source-specific concepts once per batch** (suppressed for Expert/Familiar customers via Q0).
+
+**Q0 (familiarity check) is the first question.** It records `customer.<source>_familiarity` (Expert / Familiar / Limited / None) and drives:
+- Batch-opening **concept sidebars** (shown for Limited/None; suppressed for Expert)
+- **Defer affordance intensity** (eagerly offered for Limited/None)
+- **SME suggestions** for sensitive batches (proactive for Limited/None)
+
+**Question header pattern** in `interview.md`:
+```markdown
+### Q{N}: {Title}
+**Tier**: 1 | 2 | 3
+**Trigger**: <boolean over draft_profile + answers-so-far>
+**Skip behavior**: defer to `_unknown_` with `owner: <role>`
+**Records to**: answers.<key>
+
+{Question prose — plain language, no dual phrasing}
+```
+
+**Three adaptation dimensions**:
+1. Activity heatmap → scopes which modules' questions fire (Batch-level + question-level skipping).
+2. Prior-answer branching → e.g. *"if customer said 'we use SAP for inventory', drop all inventory questions"*.
+3. Data-signal triggers → e.g. *"only ask multi-currency question if `distinct_currencies > 1`"*.
+
+### Persistent artifact layout
+
+All setup state lives inside the customer's glossary skill folder — git-trackable, multi-customer-scoped, enterprise-fork-compatible:
+
+```
+<skills-root>/<source>/<customer>-<source>-glossary/
+├── SKILL.md                ← Genie-loaded glossary (rendered view)
+├── answers.json            ← structured source of truth
+├── draft_profile.json      ← most-recent Phase 0 profile
+├── activity_report.md      ← most-recent Module Activity Heatmap
+└── history/                ← timestamped snapshots; --no-history disables
+```
+
+Re-runs load `answers.json` directly (not parse rendered markdown). Customer-managed enterprise GitHub forks can `.gitignore` ephemeral artifacts and rely on git history; the framework's `--no-history` flag supports this cleanly.
+
+### Phase 3 vetting — 4 non-skippable checkpoints
+
+When the customer **explicitly requests** UC comment registration (never offered spontaneously):
+
+1. **Preview** — emit full statement list + scope (ACTIVE-only by default; `--scope all` includes DORMANT) + diff against existing comments. No writes.
+2. **Unambiguous approval** — "yes apply" or equivalent. **NOT** "okay" / "looks good" / "sounds fine" — those are acknowledgments, not approval.
+3. **Customer executes** — Python `--apply` OR runs the committed `apply_uc_comments.sql` artifact themselves in SQL Editor. The skill never auto-applies.
+4. **Post-apply verification** — confirm `system.information_schema.columns` reflects the comments.
+
+Two SQL mechanisms ship for Phase 3:
+- **Generated** via `apply_uc_comments.py --emit-sql <path>` — uses Databricks `IDENTIFIER()` parameterization for namespace binding in SQL Editor.
+- **Committed** `apply_uc_comments.sql` — hand-runnable for warehouse-only customers. CI verifies it matches the generated output.
+
+### Cross-source adaptation (what varies, what stays identical)
+
+| Aspect | Varies per source | Stays identical |
+|---|---|---|
+| Module → primary table → date-column map | ✅ Maximo: `WORKORDER.STATUSDATE` etc.; SAP PM: `AUFK.ERDAT` etc.; Salesforce: `Case.LastModifiedDate` etc. | The 4-verdict scheme + 365-day threshold + recency probe pattern |
+| Industry-solution / customization signals | ✅ Maximo: PLUSG/PLUSC/PLUST/PLUSU; SAP: IS-Oil, IS-Utilities, IS-MIL; Salesforce: Industry Cloud, Field Service | The probe-then-confirm interview pattern |
+| Universal-fact catalogue in `-overview` | ✅ Per source (Maximo: SYNONYMDOMAIN, HISTORYFLAG, app-server-timezone; SAP: client-scoped tables, language-scoped texts, time-zone TVARV; Salesforce: org-wide defaults, multi-currency org, time zones) | The overview-as-ledger pattern itself |
+| Customer-specific customization dimensions | ✅ workflows, calendars, criticality schemes, status renamings vary in shape per source | The interview-tier framework + skip-defer + re-run-closes-gaps principles |
+| Phase 3 mechanics | All sources require some form of UC comment / metadata registration | 4-checkpoint vetting + opt-in only + 2 SQL mechanisms |
+| Persistent artifact layout | The folder name (`<customer>-<source>-glossary/`) varies | Everything else (file names, history pattern, gitignore template) is identical |
+
+The framework above is portable. When forking the `_template/example-setup/` for a new source, fill in the source-specific map but keep the pattern intact.
+
 ## Quick start: a new module skill end-to-end
 
 The order an author should actually follow:
