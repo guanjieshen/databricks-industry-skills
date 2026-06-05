@@ -14,7 +14,7 @@ description: |
   model literacy, maximo-labor-resources for labor master, and
   maximo-asset-hierarchy for hierarchical rollups.
 metadata:
-  version: "0.3.0"
+  version: "0.3.1"
 parent: maximo-overview
 ---
 
@@ -71,12 +71,19 @@ If a business term is ambiguous and no glossary covers it, **ask before guessing
 
 ## Workflow
 
-For any new question, resolve in this order:
+**Building a semantic layer / Genie Agent / dashboard (the most common ask):** start from
+[metric_view.yaml](metric_view.yaml) — the governed WO semantic layer. Its measures (`open_wo_count`,
+`mean_time_to_complete`, `avg_backlog_age_days`, `pct_open`, …) and **agent metadata** (synonyms like
+"WO backlog", "MTTC", "aging") are defined once and sliceable by site / status / work type / criticality.
+Defer creation & registration mechanics to the platform skill [`databricks-metric-views`](https://github.com/databricks-solutions/ai-dev-kit/tree/main/databricks-skills/databricks-metric-views); `maximo-setup` owns registration.
 
-1. **Trusted UDFs** in [metric_udfs.sql](metric_udfs.sql) — `open_wo_count`, `wo_aging_bucket`, `mean_time_to_complete`, `backlog_age_days`, `time_in_current_status`. If a UDF matches the question, call it.
-2. **Parameterized example query** — check [examples.sql](examples.sql) for an existing pattern; use it with the user's parameters.
-3. **Pre-joined view** — compose using `v_workorder_enriched` / `v_workorder_status_history` / `v_labor_actuals` from [views.sql](views.sql).
-4. **Raw tables** — only when the view layer doesn't cover the join shape. Explain why you're skipping the views.
+**Answering an ad-hoc question:** resolve in this order:
+
+1. **Metric view** — if `wo_metrics` is registered, query it with `MEASURE(...)`; it encodes the canonical definitions (and the woclass/istask filter).
+2. **Trusted UDFs** in [metric_udfs.sql](metric_udfs.sql) — `open_wo_count`, `wo_aging_bucket`, `mean_time_to_complete`, `backlog_age_days`, `time_in_current_status` — when the metric takes parameters.
+3. **Parameterized example query** — check [examples.sql](examples.sql) for an existing pattern; use it with the user's parameters.
+4. **Pre-joined view** — compose using `v_workorder_enriched` / `v_workorder_status_history` / `v_labor_actuals` from [views.sql](views.sql).
+5. **Raw tables** — only when the view layer doesn't cover the join shape. Explain why you're skipping the views.
 
 ## What's in this skill
 
@@ -85,6 +92,7 @@ For any new question, resolve in this order:
 - [examples.sql](examples.sql) — load when the user's question matches a pattern (backlog by site, aging buckets, MTTC, actual vs planned, status history, craft utilization, failure pareto).
 - [views.sql](views.sql) — DDL for `v_workorder_enriched`, `v_workorder_status_history`, `v_labor_actuals`. Register once via `maximo-setup`.
 - [metric_udfs.sql](metric_udfs.sql) — Trusted Asset UC SQL functions Genie Code calls as governed metrics instead of regenerating ad-hoc SQL. Register once via `maximo-setup`.
+- [metric_view.yaml](metric_view.yaml) — **load when** building/extending the WO semantic layer, a Genie Agent, or a dashboard. The metric view: canonical measures + **agent metadata** (synonyms/display_name/format) over `v_workorder_enriched`, with the woclass/istask filter baked in. Register once via `maximo-setup`; mechanics live in the platform skill `databricks-metric-views`.
 
 ## What NOT to do
 
@@ -100,4 +108,5 @@ For any new question, resolve in this order:
 - **`maximo-asset-hierarchy`** for hierarchical rollups ("open WOs under station X", "backlog by region"). Use `v_location_rollup_keys` to roll up WO counts/cost to any location parent.
 - **`maximo-maintenance-cost`** for any cost question beyond a single-record readout — cost rollup, estimate-vs-actual variance, contractor spend, PM-vs-CM cost, and multi-currency (`WOCURRENCY`) normalization. This skill's views pass `ACTLABCOST`/`ACTMATCOST` through but don't own cost methodology (gotcha 15).
 - **`maximo-reliability`** for reliability KPIs computed *from* WO data — MTBF, MTTR, PM compliance, and reactive-vs-proactive / schedule-compliance ratios (which must be measured on labor hours, not WO counts — gotcha 14).
-- **`maximo-setup`** to register the views in [views.sql](views.sql) and the Trusted UDFs in [metric_udfs.sql](metric_udfs.sql). Never run those scripts from this skill — defer to setup's preview-then-apply workflow.
+- **`maximo-setup`** to register the views in [views.sql](views.sql), the Trusted UDFs in [metric_udfs.sql](metric_udfs.sql), and the metric view in [metric_view.yaml](metric_view.yaml). Never run those scripts from this skill — defer to setup's preview-then-apply workflow.
+- **`databricks-metric-views`** (platform) — the *mechanics* of creating/registering/refreshing the WO metric view. This skill supplies the source-specific YAML + agent metadata; that skill supplies the how.

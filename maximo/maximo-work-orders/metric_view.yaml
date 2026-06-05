@@ -1,0 +1,221 @@
+# =============================================================================
+# Maximo Work Orders — Metric View (semantic layer)
+# =============================================================================
+# The governed semantic layer Genie Agents, AI/BI dashboards, and BI tools query
+# for work-order metrics. Canonical measures (lifted from metric_udfs.sql) are
+# defined ONCE here and sliceable by any dimension below. The agent metadata
+# (display_name / comment / format / synonyms) is what lets Genie discover and
+# correctly use each measure from natural language — synonyms carry the real
+# maintenance-planner vocabulary ("WO backlog", "MTTC", "aging").
+#
+# Source-specific content lives here; CREATE / register / refresh mechanics are
+# the platform skill's job — load `databricks-metric-views`. Registration is
+# owned by maximo-setup (preview-then-apply), not run from this skill.
+#   https://docs.databricks.com/aws/en/business-semantics/metric-views/
+#   https://docs.databricks.com/aws/en/business-semantics/agent-metadata
+#
+# Bind at registration: :catalog, :silver_schema (MBO tables + the enriched view),
+# :gold_schema (where the metric view lives). Requires DBR 17.3+ and YAML 1.1.
+#   CREATE VIEW :catalog.:gold_schema.wo_metrics WITH METRICS LANGUAGE YAML AS $$ <body> $$;
+# =============================================================================
+
+version: 1.1
+source: :catalog.:silver_schema.v_workorder_enriched
+comment: Canonical work-order metrics, sliceable by site, status, work type, asset criticality, and age.
+
+# Apply the universal WO gotchas ONCE (the enriched view does not pre-filter):
+#   woclass = 'WORKORDER'  → exclude PM/CHANGE/RELEASE/ACTIVITY records (gotcha 2)
+#   istask = 0             → exclude child tasks from counts (gotcha 3)
+# historyflag is intentionally NOT filtered, so completed/closed WOs are included
+# in completion metrics — confirm closed WOs are present in silver (gotcha 11).
+filter: woclass = 'WORKORDER' AND istask = 0
+
+# ── Dimensions ───────────────────────────────────────────────────────────────
+fields:
+  - name: site
+    expr: siteid
+    display_name: Site
+    comment: Operating site (SITEID) — the composite-key scope. Always present in WO joins.
+    synonyms:
+      - location
+      - facility
+      - plant
+
+  - name: status
+    expr: status
+    display_name: Status
+    comment: >-
+      WO lifecycle status. Stores the customer-renamable synonym VALUE, not the internal
+      MAXVALUE (gotcha 5) — resolve a status set via SYNONYMDOMAIN / the workspace glossary
+      before relying on literals.
+    synonyms:
+      - wo status
+      - state
+
+  - name: work_type
+    expr: worktype
+    display_name: Work Type
+    comment: >-
+      WORKTYPE code (stock: CM/PM/EM/PROJ, but customer-configured — confirm the codes that
+      exist in this deployment, gotcha 10). Not a clean reactive-vs-proactive proxy (gotcha 14).
+    synonyms:
+      - wo type
+      - maintenance type
+      - corrective vs preventive
+
+  - name: age_bucket
+    expr: age_bucket
+    display_name: Age Bucket
+    comment: 30/60/90-day aging band from REPORTDATE (precomputed in the enriched view).
+    synonyms:
+      - aging bucket
+      - backlog age band
+
+  - name: asset_criticality
+    expr: asset_criticality
+    display_name: Asset Criticality
+    comment: Criticality of the WO's asset (joined from ASSET). Use for risk-weighted backlog views.
+    synonyms:
+      - criticality
+      - asset risk
+
+  - name: priority
+    expr: wopriority
+    display_name: WO Priority
+    synonyms:
+      - work order priority
+      - urgency
+
+  - name: reported_date
+    expr: reportdate
+    display_name: Reported Date
+    comment: When the WO was created (REPORTDATE). Stored in app-server timezone (gotcha 13).
+    synonyms:
+      - created date
+      - open date
+    format:
+      type: date
+      date_format: year_month_day
+      leading_zeros: true
+
+# ── Measures (lifted from metric_udfs.sql; defined once, slice by any field) ──
+measures:
+  - name: wo_count
+    expr: COUNT(1)
+    display_name: Work Order Count
+    comment: Count of parent work orders (after the woclass/istask filter).
+    synonyms:
+      - number of work orders
+      - wo volume
+      - total work orders
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: open_wo_count
+    expr: COUNT_IF(status NOT IN ('COMP', 'CLOSE', 'CAN'))
+    display_name: Open WO Count
+    comment: >-
+      Open backlog — parent WOs not COMP/CLOSE/CAN. The open-status set is customer-configurable
+      (status literals assume stock values; resolve via SYNONYMDOMAIN — gotcha 5). Mirrors the
+      open_wo_count Trusted UDF.
+    synonyms:
+      - wo backlog
+      - open work orders
+      - backlog
+      - open count
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: completed_wo_count
+    expr: COUNT_IF(status IN ('COMP', 'CLOSE'))
+    display_name: Completed WO Count
+    comment: >-
+      Completed WOs, keyed on COMP-or-later (CLOSE is a separate, often-deferred finalization —
+      gotcha 11). Confirm whether the user means COMP or only CLOSE.
+    synonyms:
+      - completed work orders
+      - finished work orders
+      - closed work orders
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: mean_time_to_complete
+    expr: AVG(CASE WHEN status IN ('COMP', 'CLOSE') AND actfinish IS NOT NULL THEN datediff(DAY, reportdate, actfinish) END)
+    display_name: Mean Time to Complete (days)
+    comment: Mean days from REPORTDATE to ACTFINISH over completed WOs. Mirrors the mean_time_to_complete Trusted UDF.
+    synonyms:
+      - mttc
+      - mean time to complete
+      - turnaround time
+      - completion time
+    format:
+      type: number
+      decimal_places:
+        type: exact
+        places: 1
+
+  - name: avg_backlog_age_days
+    expr: AVG(CASE WHEN status NOT IN ('COMP', 'CLOSE', 'CAN') THEN days_since_reported END)
+    display_name: Avg Backlog Age (days)
+    comment: Mean age in days of the OPEN backlog (days since REPORTDATE). Mirrors the backlog_age_days Trusted UDF, aggregated.
+    synonyms:
+      - average backlog age
+      - aging
+      - average wo age
+    format:
+      type: number
+      decimal_places:
+        type: exact
+        places: 1
+
+  - name: pct_open
+    expr: MEASURE(open_wo_count) / MEASURE(wo_count)
+    display_name: Percent Open
+    comment: Composable — share of WOs that are open. Reuses the measures above (no duplication).
+    synonyms:
+      - percent open
+      - open rate
+      - backlog ratio
+    format:
+      type: percentage
+      decimal_places:
+        type: exact
+        places: 1
+
+  - name: total_actual_cost
+    expr: SUM(actlabcost + actmatcost)
+    display_name: Total Actual Cost
+    comment: >-
+      Simple pass-through of actual labor + material cost. For cost rollup, estimate-vs-actual
+      variance, contractor spend, PM-vs-CM cost, or multi-currency normalization, defer to
+      maximo-maintenance-cost (gotcha 15) — this measure does not own cost methodology.
+    synonyms:
+      - actual cost
+      - wo spend
+      - maintenance spend
+    format:
+      type: currency
+      currency_code: USD
+      decimal_places:
+        type: exact
+        places: 2
+      abbreviation: compact
+
+  # Advanced: 30-day trailing completed volume (window measure).
+  - name: t30d_completed_count
+    expr: COUNT_IF(status IN ('COMP', 'CLOSE'))
+    display_name: Completed WOs (30-day trailing)
+    comment: Rolling 30-day completed-WO volume, ordered by reported date.
+    synonyms:
+      - completed last 30 days
+      - rolling completions
+    window:
+      - order: reported_date
+        range: trailing 30 day
+        semiadditive: last
