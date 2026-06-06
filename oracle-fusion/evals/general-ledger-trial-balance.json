@@ -1,0 +1,15 @@
+{
+  "query": "give me the trial balance for OCT-25 for our primary ledger",
+  "expected_skill": "oracle-fusion-general-ledger",
+  "expected_behavior": [
+    "Loads oracle-fusion-general-ledger with oracle-fusion-overview as parent",
+    "Composes the keystone oracle-fusion-ledger-coa for the period (v_gl_period), currency basis, and CCID decode (v_code_combination)",
+    "Uses v_trial_balance / the trial_balance Trusted UDF with posted-only journals (STATUS='P') and ACTUAL_FLAG='A', in ledger currency",
+    "Resolves the OCT-25 period via the effective period number, not alphabetically"
+  ],
+  "anti_behavior": [
+    "Does NOT sum across ACTUAL_FLAG (actual / budget / encumbrance)",
+    "Does NOT include unposted (STATUS='U') journals",
+    "Does NOT sum ENTERED amounts across currencies"
+  ]
+}

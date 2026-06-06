@@ -1,0 +1,17 @@
+{
+  "query": "create a Genie Agent for our Oracle Fusion Financials data",
+  "expected_skill": "oracle-fusion-genie-agent",
+  "expected_behavior": [
+    "Loads oracle-fusion-genie-agent with oracle-fusion-overview as parent",
+    "Confirms oracle-fusion-setup has run (UC comments + segment->meaning map + glossary) before curating",
+    "Asks which persona/Agent (Finance vs Procurement/SCM) to scope the object set",
+    "Curates the conformed gold views + metric views (gl_metrics) + keystone and GL Trusted UDFs, not raw Bronze _ALL tables",
+    "Bakes universal filters into the general instructions (scope _ALL by BU/ledger, posted-only STATUS='P', pin one ACTUAL_FLAG, accounted-not-entered currency, period sort by effective number, decode CCIDs) without re-explaining the rationale",
+    "Defers Agent create/export/import mechanics to databricks-genie and plans a benchmark + Monitoring-tab re-curation pass"
+  ],
+  "anti_behavior": [
+    "Does NOT hand-write trial-balance / spend / currency / CCID-decode SQL into the Agent instead of curating Trusted Assets",
+    "Does NOT build one giant Fusion Agent crossing Finance and Procurement",
+    "Does NOT re-implement Genie create/export mechanics"
+  ]
+}

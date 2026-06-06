@@ -1,0 +1,16 @@
+{
+  "query": "what's the balance for the company this year?",
+  "expected_skill": "oracle-fusion-general-ledger",
+  "expected_behavior": [
+    "Loads oracle-fusion-general-ledger with oracle-fusion-overview as parent",
+    "Surfaces the balance-type ambiguity BEFORE answering: Actual, Budget, or Encumbrance (ACTUAL_FLAG A/B/E); if Budget, which BUDGET_VERSION_ID",
+    "Surfaces the currency-basis ambiguity: entered (document), accounted (ledger), or translated balances",
+    "Asks which ledger / set of books and confirms which segment value means 'company' via the segment->meaning map (composing the keystone)",
+    "Does NOT silently pick a balance type or currency basis and return a single number"
+  ],
+  "anti_behavior": [
+    "Does NOT sum across ACTUAL_FLAG to produce one blended balance",
+    "Does NOT assume a default currency basis without confirming",
+    "Does NOT guess which segment is 'company'"
+  ]
+}

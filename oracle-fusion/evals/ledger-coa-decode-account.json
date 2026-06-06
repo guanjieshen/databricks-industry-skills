@@ -1,0 +1,13 @@
+{
+  "query": "decode this code combination 01-520-7400-0000 into readable account segments",
+  "expected_skill": "oracle-fusion-ledger-coa",
+  "expected_behavior": [
+    "Loads oracle-fusion-ledger-coa (KEYSTONE) with oracle-fusion-overview as parent",
+    "Resolves the CCID via v_code_combination / decode_ccid_segments and the flexfield value sets, not a hand-written split",
+    "States that which segment means company / cost center / natural account is per-tenant config and resolves it via the segment->meaning map in the workspace glossary"
+  ],
+  "anti_behavior": [
+    "Does NOT assume a fixed segment-position-to-meaning mapping",
+    "Does NOT treat CODE_COMBINATION_ID as a readable string"
+  ]
+}

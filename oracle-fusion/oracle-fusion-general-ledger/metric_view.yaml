@@ -1,0 +1,216 @@
+# =============================================================================
+# Oracle Fusion General Ledger — Metric View (semantic layer)
+# =============================================================================
+# The governed semantic layer Genie Agents, AI/BI dashboards, and BI tools query
+# for GL metrics. Canonical measures (lifted from metric_udfs.sql) are defined
+# ONCE here and sliceable by any dimension below. The agent metadata
+# (display_name / comment / format / synonyms) is what lets Genie discover and
+# correctly use each measure from natural language — synonyms carry the real
+# accountant vocabulary ("trial balance", "net activity", "GL spend").
+#
+# Source-specific content lives here; CREATE / register / refresh mechanics are
+# the platform skill's job — load `databricks-metric-views`. Registration is
+# owned by oracle-fusion-setup (preview-then-apply), not run from this skill.
+#   https://docs.databricks.com/aws/en/business-semantics/metric-views/
+#   https://docs.databricks.com/aws/en/business-semantics/agent-metadata
+#
+# Source is the gold GL view (v_gl_journal_enriched, which already decodes the
+# CCID via the keystone v_code_combination and carries the period sort key from
+# v_gl_period). Swap to a balances-grain gold view (v_trial_balance) for a
+# point-in-time trial-balance metric view; this one is journal-activity grain.
+#
+# CRITICAL GL DISCIPLINE encoded structurally:
+#   * filter pins posted-only (gotcha 2) so unposted drafts never enter a metric.
+#   * balance_type is a DIMENSION (ACTUAL_FLAG) — always GROUP net_activity BY it
+#     so actual/budget/encumbrance are never summed together (gotcha 1).
+#
+# Bind at registration: :catalog, :gold_schema (where the GL view + this metric
+# view live). Requires DBR 17.3+ and YAML 1.1.
+#   CREATE VIEW :catalog.:gold_schema.gl_metrics WITH METRICS LANGUAGE YAML AS $$ <body> $$;
+# =============================================================================
+
+version: 1.1
+source: :catalog.:gold_schema.v_gl_journal_enriched
+comment: Canonical GL metrics (journal-activity grain), sliceable by ledger, legal entity, natural account, cost center, period, and balance type. Posted-only; group net activity by balance_type to avoid summing across ACTUAL_FLAG.
+
+# Posted-only discipline applied ONCE here (gotcha 2). Balance type is NOT filtered
+# here — it is exposed as a dimension so the agent always slices by it (gotcha 1).
+filter: header_status = 'P' AND line_status = 'P'
+
+# ── Dimensions ───────────────────────────────────────────────────────────────
+fields:
+  - name: ledger
+    expr: ledger_id
+    display_name: Ledger
+    comment: GL ledger (GL_LEDGERS.LEDGER_ID — the 4 Cs scope). Always present; totals are per ledger / currency basis.
+    synonyms:
+      - ledger id
+      - set of books
+      - book
+
+  - name: legal_entity
+    expr: balancing_segment_value
+    display_name: Legal Entity (Balancing Segment)
+    comment: >-
+      Balancing segment value, decoded by the keystone v_code_combination. Ties an account to a
+      legal entity (gotcha 5) — segment position is per-tenant config, resolve via the glossary.
+    synonyms:
+      - balancing segment
+      - bsv
+      - company
+      - entity
+
+  - name: natural_account
+    expr: natural_account_value
+    display_name: Natural Account
+    comment: Natural-account segment value (decoded via keystone). The "what" of the account — revenue, expense, asset, etc. Position is customer config.
+    synonyms:
+      - account
+      - gl account
+      - account code
+      - natural account segment
+
+  - name: cost_center
+    expr: cost_center_value
+    display_name: Cost Center
+    comment: Cost-center segment value (decoded via keystone). The "where/who" dimension. Position is customer config.
+    synonyms:
+      - department
+      - cost centre
+      - cost center segment
+      - responsibility center
+
+  - name: balance_type
+    expr: actual_flag
+    display_name: Balance Type
+    comment: >-
+      ACTUAL_FLAG: A = Actual, B = Budget, E = Encumbrance. These are DIFFERENT balance types —
+      ALWAYS group net_activity / period_net by this dimension; never sum across it (gotcha 1).
+      Budget also needs a budget version; encumbrance an encumbrance type.
+    synonyms:
+      - actual flag
+      - actual vs budget
+      - balance category
+      - actual budget encumbrance
+
+  - name: je_source
+    expr: je_source
+    display_name: Journal Source
+    comment: Origin of the journal (Manual, Spreadsheet, Payables, Receivables, Cost Management, …). Configurable/extensible — confirm the set (gotcha 9).
+    synonyms:
+      - source
+      - journal origin
+      - posted from
+
+  - name: period
+    expr: period_name
+    display_name: Accounting Period
+    comment: >-
+      Accounting period (e.g. OCT-25). Order chronologically by the keystone period_sort_key, never
+      by this label (gotcha 4). An open period is not final.
+    synonyms:
+      - gl period
+      - accounting period
+      - fiscal period
+    format:
+      type: date
+      date_format: year_month_day
+      leading_zeros: true
+
+# ── Measures (defined once, slice by any field above) ─────────────────────────
+measures:
+  - name: debit_amount
+    expr: SUM(accounted_dr)
+    display_name: Debit Amount
+    comment: Total accounted (ledger-currency) debits. Posted only. Slice by balance_type (gotcha 1).
+    synonyms:
+      - debits
+      - total debit
+      - dr
+    format:
+      type: currency
+      currency_code: USD
+      decimal_places:
+        type: exact
+        places: 2
+      abbreviation: compact
+
+  - name: credit_amount
+    expr: SUM(accounted_cr)
+    display_name: Credit Amount
+    comment: Total accounted (ledger-currency) credits. Posted only. Slice by balance_type (gotcha 1).
+    synonyms:
+      - credits
+      - total credit
+      - cr
+    format:
+      type: currency
+      currency_code: USD
+      decimal_places:
+        type: exact
+        places: 2
+      abbreviation: compact
+
+  - name: net_activity
+    expr: SUM(accounted_dr - accounted_cr)
+    display_name: Net Activity (Debit - Credit)
+    comment: >-
+      Activity Amount = accounted debits minus credits, ledger currency (gotcha 10). The core GL
+      measure. ALWAYS group by balance_type so actual/budget/encumbrance are not summed (gotcha 1).
+    synonyms:
+      - net amount
+      - activity amount
+      - net movement
+      - gl spend
+      - net debit credit
+    format:
+      type: currency
+      currency_code: USD
+      decimal_places:
+        type: exact
+        places: 2
+      abbreviation: compact
+
+  - name: period_net
+    expr: SUM(accounted_dr - accounted_cr)
+    display_name: Period Net Activity
+    comment: >-
+      Net accounted activity within the selected period(s) — group by period to get per-period
+      movement. Same expression as net_activity, surfaced under the planner's "period net" vocabulary.
+    synonyms:
+      - period net activity
+      - period movement
+      - net per period
+    format:
+      type: currency
+      currency_code: USD
+      decimal_places:
+        type: exact
+        places: 2
+      abbreviation: compact
+
+  - name: journal_line_count
+    expr: COUNT(1)
+    display_name: Journal Line Count
+    comment: Count of posted journal lines (after the posted-only filter). For entry-header volume, count at GL_JE_HEADERS grain instead.
+    synonyms:
+      - line count
+      - number of journal lines
+      - journal volume
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  # Composable measure — reuses the measures above, no duplication.
+  - name: net_to_debit_ratio
+    expr: MEASURE(net_activity) / MEASURE(debit_amount)
+    display_name: Net-to-Debit Ratio
+    comment: Composable — net activity as a share of gross debits. Reuses net_activity and debit_amount (no re-aggregation). Group by balance_type (gotcha 1).
+    synonyms:
+      - net to debit
+      - activity ratio
+    format:
+      type: number
+      decimal_places:
+        type: all

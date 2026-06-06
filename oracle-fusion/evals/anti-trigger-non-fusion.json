@@ -1,0 +1,12 @@
+{
+  "query": "how do I tune a slow Spark job that's spilling to disk on my Databricks cluster?",
+  "expected_skill": "none",
+  "expected_behavior": [
+    "Does NOT load any oracle-fusion-* skill — the query has no Oracle Fusion ERP, Financials, GL, procurement, or accounting content",
+    "Routes to general Databricks performance-tuning guidance instead"
+  ],
+  "anti_behavior": [
+    "Does NOT load oracle-fusion-overview or any oracle-fusion-* skill",
+    "Does NOT invent a Fusion data-model angle for a generic Spark-tuning question"
+  ]
+}

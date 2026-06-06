@@ -1,0 +1,14 @@
+{
+  "query": "set up Oracle Fusion in my workspace so Genie understands our chart of accounts segments",
+  "expected_skill": "oracle-fusion-setup",
+  "expected_behavior": [
+    "Loads oracle-fusion-setup (with oracle-fusion-overview as parent)",
+    "Profiles the customer's Fusion data and interviews on COA segment meaning, ledgers, business units, and landing pattern (BICC PVO vs FDI)",
+    "Generates the <customer>-oracle-fusion-glossary skill including the physical->canonical table mapping and the segment->meaning map",
+    "Offers to register UC comments using preview-then-apply (gated on explicit approval)"
+  ],
+  "anti_behavior": [
+    "Does NOT assume segment positions (e.g. SEGMENT2 = cost center)",
+    "Does NOT write UC comments without preview-then-apply approval"
+  ]
+}
