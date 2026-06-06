@@ -348,15 +348,35 @@ When the Space misses a question, *diagnose* before fixing. Each miss type fixes
 
 No "instructions first" or "instructions last." Each surface is first for its kind of miss.
 
+### Prompting cookbook — a seventh, user-facing surface
+
+The six surfaces above are inside the Genie Space. There's a seventh surface that lives **outside** the Space and improves answer quality without any in-Space change: a short, source-specific **prompting cookbook** the family ships for end users. Per [Databricks Genie Code best practices](https://docs.databricks.com/aws/en/genie-code/use-genie-code), Genie returns better answers when users specify level of detail, output structure, library, and reference tables explicitly (`@table-name`, `/findTables`). The cookbook teaches that for the source's vocabulary so customers learn to prompt their Space well.
+
+What it is: a `prompting_cookbook.md` sibling file (or a README section) shipping with the `-genie-agent` skill, containing **3–7 worked example user prompts** showing the format and specificity Genie answers best with for *this* source. NOT instructions for the Agent — instructions for the *human* prompting the Agent.
+
+Each entry has three parts:
+- **Vague prompt** (what users naturally type)
+- **Specific prompt** (what gets a good answer)
+- **Why** (which Genie behavior the specificity exploits)
+
+Pattern to cover:
+- **Disambiguation by reference** — using `@<table-name>` or `@<column>` to lock context when natural language spans multiple modules/tables (Maximo: `@workorder` vs `@pm`; Salesforce: `@Case` vs `@Opportunity`).
+- **Source-specific type-conversion / timezone hints** — when Genie needs help converting (Maximo datetimes are app-server-local; Salesforce datetimes are UTC; SAP dates are client-zone). Tell users when to specify the convention in-prompt.
+- **Output-shape steering** — "as a bar chart" / "as a table grouped by site" / "step-by-step". Per Databricks docs, Genie respects explicit structure asks.
+- **Scope-narrowing for the source's universal traps** — e.g. for Maximo: "open work orders" → "open work orders (`STATUS IN (WAPPR, APPR, INPRG, WMATL, WPCOND)`) on Mainline for the last 30 days". Steers Genie around the customer's status convention.
+- **`/findTables` use** — when natural language is ambiguous about which table, recommend the slash command rather than guessing.
+
+The cookbook lives with the `-genie-agent` skill so it ships and updates alongside the Space's curation. Customers can paste it into their Space's README/launchpad. Defer general Genie Code prompting tips to [Databricks docs](https://docs.databricks.com/aws/en/genie-code/use-genie-code) — only encode source-specific guidance here.
+
 ### Cross-source adaptation
 
-The six-surface pattern is universal. The source-specific content per surface varies:
+The six-surface pattern (plus the seventh, user-facing cookbook) is universal. The source-specific content per surface varies:
 - **Persona** is per-source / per-customer-persona (a Maximo planner ≠ a Salesforce SDR)
 - **Joins configuration** is per-source-schema (Maximo's composite `SITEID` keys ≠ Salesforce's `AccountId` lookups)
 - **Trusted UDFs** are per-source-and-module (MTBF for Maximo reliability ≠ pipeline conversion rate for Salesforce)
 - **Benchmark questions** are per-customer-business (the customer's real questions are what matters; the shipped starter is just a seed)
 
-When forking `_template/example-genie-agent/` for a new source, fill in the source-specific content but keep the six-surface pattern, the persona-first opening, and the Description-vs-Instructions distinction intact.
+When forking `_template/example-genie-agent/` for a new source, fill in the source-specific content but keep the six-surface pattern, the persona-first opening, the Description-vs-Instructions distinction, and the prompting cookbook intact.
 
 ## Quick start: a new module skill end-to-end
 

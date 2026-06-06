@@ -119,6 +119,7 @@ One-time session config — cache, don't re-ask:
 - [ ] Step 6: Add certified example SQL from the module examples.sql files
 - [ ] Step 6b: Declare composite-key joins in the Joins configuration
 - [ ] Step 7: Run the benchmark; fix on the matching surface; repeat
+- [ ] Step 8: Ship the prompting cookbook to end users (paste into Space README / launchpad)
 ```
 
 The Genie Space has multiple text + config surfaces. Match content to the right one — each has a sweet spot:
@@ -239,11 +240,22 @@ Source the questions from [benchmark.md](benchmark.md) (the starter set), then a
 
 Use the Genie **Monitoring** tab to find real questions it got wrong and feed them back.
 
+**Step 8 — Prompting cookbook (user-facing).** The six surfaces above all live *inside* the Space. There's a seventh surface that lives *outside*: a short prompting cookbook for the human users so they ask the Space well. Per [Genie Code best practices](https://docs.databricks.com/aws/en/genie-code/use-genie-code), specificity (level of detail, `@<table>` references, output shape, scope narrowing) significantly improves answer quality. The cookbook teaches that for Maximo's vocabulary.
+
+Load [prompting_cookbook.md](prompting_cookbook.md) and paste the relevant entries into the customer's Space launchpad / README / onboarding doc. NOT for the Agent's Instructions field — that's for *agent behavior*. The cookbook is for the *human* prompting the Agent.
+
+Each cookbook entry has three parts: a vague prompt (what users naturally type), a specific prompt (what gets a good answer), and the why (which Genie behavior the specificity exploits). Customize the examples for the customer's actual modules, site IDs, status set, and timezone before shipping.
+
 ## What's in this skill
 
 - [benchmark.md](benchmark.md) — load when validating Space quality. A starter
   question set spanning work-management, reliability, integrity, HSE, and the
   cross-cutting traps, plus a Pass/Partial/Fail scoring rubric.
+- [prompting_cookbook.md](prompting_cookbook.md) — load at Step 8. Maximo-specific
+  worked examples of vague → specific user prompts (with `@<table>` references,
+  status-set narrowing, timezone hints, output-shape steering, `/findTables`
+  usage). Customize per customer (their modules, sites, status set, TZ), then
+  ship to end users in the Space launchpad / README.
 
 For programmatic create/export/import of the Space itself, load the platform
 skill [`databricks-genie`](https://github.com/databricks-solutions/ai-dev-kit/blob/main/databricks-skills/databricks-genie/SKILL.md).
@@ -268,6 +280,7 @@ This skill provides the Maximo curation content; that one provides the mechanics
 - Don't re-implement Genie create/export/import — defer to
   [`databricks-genie`](https://github.com/databricks-solutions/ai-dev-kit/blob/main/databricks-skills/databricks-genie/SKILL.md).
 - Don't declare it "done" — schedule a re-curation pass from the Monitoring tab.
+- Don't put prompting cookbook content into the Agent's Instructions field. The cookbook teaches *humans how to prompt the Agent*; Instructions tell *the Agent how to answer*. Different audiences, different surfaces. Ship the cookbook in the Space launchpad / README / onboarding doc, not as Instructions text.
 
 ## Composes with
 

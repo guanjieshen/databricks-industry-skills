@@ -141,6 +141,7 @@ Be precise: **Genie Code** is the agent harness; **Genie Spaces** is a text-to-S
 - [ ] **`benchmark.md` is loaded INTO the Space's Benchmark tab**, not just referenced as an external file. Coverage targets met: ≥3 questions per in-scope module (count + breakdown + time-windowed); ≥2 ambiguity-resolution questions; ≥2 cross-module / hierarchical questions
 - [ ] Benchmark fix order is documented as **match-fix-to-miss** (per surface), not "instructions first" or "instructions last"
 - [ ] Skill defers Genie Agent creation mechanics to the platform skill [`databricks-genie`](https://github.com/databricks-solutions/ai-dev-kit/blob/main/databricks-skills/databricks-genie/SKILL.md) (this skill provides only source-specific content; not API/UI walkthroughs)
+- [ ] **Prompting cookbook (seventh, user-facing surface)** — skill ships a `prompting_cookbook.md` with 3-7 worked examples of vague → specific user prompts for this source, covering: `@<table>` references, `/findTables` use, timezone/type-conversion specifics, output-shape steering, source-universal-trap scope narrowing. Cookbook calls out that it must be customized per customer (placeholders) and that it is NOT for the Agent's Instructions field. Live-tested rationale: per [Databricks Genie Code best practices](https://docs.databricks.com/aws/en/genie-code/use-genie-code), specificity in user prompts significantly improves answer quality.
 
 ## Evals & verification
 - [ ] ≥3 eval cases added under `<source>/evals/`
