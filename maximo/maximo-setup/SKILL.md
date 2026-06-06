@@ -31,10 +31,10 @@ Out of the box Genie doesn't know *your* Maximo — it guesses at table/column m
 
 ## What it creates, and where
 
-**The default flow creates one asset** — a workspace-tier glossary skill at `<skills-root>/maximo/<customer>-maximo-glossary/`. **UC comment registration is opt-in only** (see *Optional: UC comment registration* below). UC writes go through a heavily vetted flow; setup never offers them automatically.
+**The default flow creates one asset** — a workspace-tier glossary skill at `<skills-root>/<customer>-maximo-glossary/` (**flat, at the top level of the skills directory — NOT nested under `<skills-root>/maximo/`**). Genie Code's auto-discovery doesn't reliably traverse nested subfolders, so every skill — including this generated glossary — must live as a direct child of `.assistant/skills/` to be discoverable. **UC comment registration is opt-in only** (see *Optional: UC comment registration* below). UC writes go through a heavily vetted flow; setup never offers them automatically.
 
 ```
-<skills-root>/maximo/<customer>-maximo-glossary/
+<skills-root>/<customer>-maximo-glossary/
 ├── SKILL.md                ← the Genie-loaded glossary skill (rendered view)
 ├── answers.json            ← structured source of truth (re-run input)
 ├── draft_profile.json      ← most-recent Phase 0 profile
@@ -110,20 +110,25 @@ Record answers as `answers.json` (shape + the `draft_profile.json` → `answers.
 
 ### Phase 2 — Generate the workspace glossary skill
 
-Once interview is complete, run. Write the glossary **into the `maximo/` group folder**, alongside the rest of the family, so it shares their discovery regime:
+Once interview is complete, run. Write the glossary **as a direct child of `<skills-root>/`** (FLAT, top-level — NOT nested under `<skills-root>/maximo/` or any other subfolder):
 
 ```bash
 python scripts/generate_glossary.py \
   --customer <short-name> \
   --answers <path-to-answers.json> \
-  --output <skills-root>/maximo/<customer>-maximo-glossary/SKILL.md
+  --output <skills-root>/<customer>-maximo-glossary/SKILL.md
 # <skills-root> = /Workspace/.assistant/skills        (workspace install)
 #              or /Users/<email>/.assistant/skills     (user install — per the scope pre-flight)
+#
+# CORRECT:   /Users/.../.assistant/skills/enbridge-maximo-glossary/SKILL.md
+# WRONG:     /Users/.../.assistant/skills/maximo/enbridge-maximo-glossary/SKILL.md  ← nested; auto-discovery doesn't find it
 ```
 
-The script writes a skill file using [glossary_template.md](glossary_template.md) as the structure. See [example_glossary.md](example_glossary.md) for a worked output. (The glossary must live in the **same** folder regime as the family — if the family is installed flat at the skills root instead of under `maximo/`, drop the `maximo/` segment so both stay co-located.)
+The script writes a skill file using [glossary_template.md](glossary_template.md) as the structure. See [example_glossary.md](example_glossary.md) for a worked output.
 
-> **If you can't run Python here:** write the glossary `SKILL.md` **directly** from [glossary_template.md](glossary_template.md), filling it with the confirmed interview answers — the script only renders that template. Keep the standard frontmatter (`name`, `description`, `metadata.version`, `parent: maximo-overview`) and **record every unconfirmed item as `_unknown_ — confirm with <role>`** rather than guessing. Include a short follow-up table (who confirms what) so the flagged items aren't lost.
+> **The flat-top-level rule is non-negotiable.** Genie Code's auto-discovery does not reliably recurse into nested subfolders — a glossary placed at `<skills-root>/maximo/<customer>-maximo-glossary/` will load *only* when explicitly named or referenced from user instructions, not when its description matches a question. The other `maximo-*` family skills must also be flat at the skills root for the same reason. If you find the existing family installed under a `maximo/` parent folder, that's a discovery bug — flatten it.
+
+> **If you can't run Python here:** write the glossary `SKILL.md` **directly** from [glossary_template.md](glossary_template.md), filling it with the confirmed interview answers — the script only renders that template. Keep the standard frontmatter (`name`, `description`, `metadata.version`, `parent: maximo-overview`) and **record every unconfirmed item as `_unknown_ — confirm with <role>`** rather than guessing. Include a short follow-up table (who confirms what) so the flagged items aren't lost. Place the file at `<skills-root>/<customer>-maximo-glossary/SKILL.md` — flat, top-level.
 
 ## When setup completes — summarize this for the user
 
@@ -133,7 +138,7 @@ Close with a clear recap of **what was created, where, and the value** — then 
 
 | Asset | Where | Value |
 |---|---|---|
-| `<customer>-maximo-glossary` skill (`SKILL.md`) | `<skills-root>/maximo/<customer>-maximo-glossary/SKILL.md` | Genie now answers in the customer's vocabulary; auto-loads for any Maximo question |
+| `<customer>-maximo-glossary` skill (`SKILL.md`) | `<skills-root>/<customer>-maximo-glossary/SKILL.md` | Genie now answers in the customer's vocabulary; auto-loads for any Maximo question |
 | `answers.json` (structured source of truth) | same folder | Re-run reads this directly. Audit/diff target |
 | `draft_profile.json` | same folder | Most-recent Phase 0 profile. Used for diffing on re-run |
 | `activity_report.md` | same folder | Most-recent Module Activity Heatmap (per-module verdicts + evidence) |
@@ -362,6 +367,7 @@ Trigger a re-run on: new sites/asset classes/custom columns, or when the custome
 - **Never interpret "okay" / "looks good" / "sounds fine" / "this looks right" as approval to apply UC writes.** Those are acknowledgments of the preview, not approval to write. Require unambiguous affirmation ("yes apply", "go ahead and apply", or equivalent). When in doubt, re-ask.
 - **Never apply UC comments (or any change to existing tables) without explicit user approval.** Preview is the default; `--apply` runs only after the customer's verbal go-ahead at Checkpoint 2. (Repo rule: writes to existing objects require explicit permission.)
 - **Never auto-write to default Genie Code workspace instructions.** Setup may *read* default instructions in Pre-flight (to avoid re-asking what's already documented) but never writes to them without the same vetted opt-in flow as UC comments. The customer pastes the summary into Workspace Settings themselves after explicit approval.
+- **Don't generate the glossary skill nested under a `maximo/` parent folder.** It must be a DIRECT child of `<skills-root>/` (e.g. `/Users/<email>/.assistant/skills/<customer>-maximo-glossary/SKILL.md`). Genie Code's auto-discovery doesn't reliably recurse into nested subfolders — a glossary at `<skills-root>/maximo/<customer>-maximo-glossary/` will fail to auto-load on description match, defeating the whole point. Flat, top-level, every time.
 - Don't fabricate mappings if the customer doesn't know — write `_unknown_ — needs validation from <role>` and move on.
 - Don't ask the full interview at once. Batch 2–3 questions, accept the answers, then continue.
 - **Don't re-teach universal mechanics in the glossary or comments.** SITEID composite keys, `WOCLASS` filtering, `ISTASK` tasks-vs-child-WOs, status-is-a-synonym-domain (`SYNONYMDOMAIN`), `HISTORYFLAG`, and app-server-timezone datetimes are owned by [maximo-overview](../maximo-overview/) — capture the customer-specific *values* (their open set, their TZ, their renamed synonyms), not the mechanic itself.
