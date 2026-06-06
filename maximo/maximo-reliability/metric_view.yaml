@@ -1,0 +1,210 @@
+# =============================================================================
+# Maximo Reliability — Metric View (semantic layer)
+# =============================================================================
+# The governed semantic layer for asset reliability analytics. Canonical
+# measures (lifted from metric_udfs.sql) follow IBM's published O&G formula
+# definitions so reliability engineers can reconcile to the Maximo UI:
+#   MTBF / MTTR per the Maximo O&G application
+#   https://www.ibm.com/support/pages/mttr-and-mtbf-fields-explained-maximo-oil-gas-asset-oil-application
+# Measures are sliceable by asset class, criticality, and site. Agent metadata
+# carries the reliability-engineer vocabulary ("MTBF", "MTTR", "bad actor",
+# "failure rate", "time since last failure").
+#
+# Source-specific content lives here; CREATE / register / refresh mechanics are
+# the platform skill's job — load `databricks-metric-views`. Registration is
+# owned by maximo-setup (preview-then-apply), not run from this skill.
+#   https://docs.databricks.com/aws/en/business-semantics/metric-views/
+#   https://docs.databricks.com/aws/en/business-semantics/agent-metadata
+#
+# Bind at registration: :catalog, :silver_schema (FAILUREREPORT/PM/ASSETMETER/
+# WORKORDER MBO tables and v_asset_reliability_summary), :gold_schema. DBR 17.3+,
+# YAML 1.1.
+#   CREATE VIEW :catalog.:gold_schema.reliability_metrics WITH METRICS LANGUAGE YAML AS $$ <body> $$;
+#
+# Scope: this view is anchored at the ASSET grain (v_asset_reliability_summary).
+# For per-failure-event analytics use the sibling v_failure_events view; for
+# meter excursions use v_meter_excursions. MTBF/MTTR formulas operate on a
+# window — exposed here as window measures.
+# =============================================================================
+
+version: 1.1
+source: :catalog.:silver_schema.v_asset_reliability_summary
+comment: Canonical asset reliability metrics. One row per active asset; sliceable by class, criticality, and site. SMRP / IBM O&G formula provenance — measures reconcile to the Maximo UI.
+
+# v_asset_reliability_summary already filters a.__END_AT IS NULL (active assets).
+# No universal filter needed at this layer. WO-side gotchas (WOCLASS, ISTASK,
+# HISTORYFLAG, status synonyms) are applied inside v_failure_events, which feeds
+# the summary view.
+
+# ── Dimensions ───────────────────────────────────────────────────────────────
+fields:
+  - name: site
+    expr: siteid
+    display_name: Site
+    comment: ASSET.SITEID. Composite-key scope (overview gotcha 4).
+    synonyms:
+      - facility
+      - plant
+      - location
+
+  - name: asset
+    expr: assetnum
+    display_name: Asset
+    comment: ASSET.ASSETNUM. Use for per-asset bad-actor and time-since analyses.
+    synonyms:
+      - assetnum
+      - equipment
+      - tag
+
+  - name: asset_class
+    expr: classstructureid
+    display_name: Asset Class
+    comment: >-
+      ASSET.CLASSSTRUCTUREID — the asset classification. MTBF/MTTR are typically
+      reported at this grain (e.g. "centrifugal pumps"). Resolve class names via
+      workspace glossary (this skill's gotcha 8 — asset-class resolution).
+    synonyms:
+      - asset classification
+      - asset taxonomy
+      - equipment class
+      - pump class
+
+  - name: criticality
+    expr: criticality
+    display_name: Criticality
+    comment: ASSET.CRITICALITY. Drives risk-weighted bad-actor framings (this skill's gotcha 7).
+    synonyms:
+      - asset criticality
+      - risk
+      - risk rating
+
+  - name: install_date
+    expr: installdate
+    display_name: Install Date
+    comment: ASSET.INSTALLDATE. Age proxy for normalized reliability comparisons.
+    synonyms:
+      - commissioned date
+      - install date
+      - asset age
+    format:
+      type: date
+      date_format: year_month_day
+      leading_zeros: true
+
+# ── Measures (lifted from metric_udfs.sql; defined once, slice by any field) ──
+measures:
+  - name: asset_count
+    expr: COUNT(1)
+    display_name: Asset Count
+    comment: Count of active assets under the slice. Use as the denominator for per-asset reliability ratios.
+    synonyms:
+      - assets
+      - active assets
+      - equipment count
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: failure_count_12mo
+    expr: SUM(failure_count_12mo)
+    display_name: Failure Count (12-mo)
+    comment: >-
+      Sum of failure events in the trailing 12 months (FAILUREREPORT joined to
+      WO via v_failure_events). Numerator for failure-rate and MTBF; primary
+      bad-actor ranking metric (count framing — this skill's gotcha 7).
+    synonyms:
+      - failures
+      - 12 month failures
+      - annual failures
+      - failure rate numerator
+      - bad actor count
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: avg_days_since_last_failure
+    expr: AVG(days_since_last_failure)
+    display_name: Avg Days Since Last Failure
+    comment: >-
+      Mean days since the most recent failure across assets in the slice.
+      Mirrors the time_since_last_failure Trusted UDF aggregated. Higher = more
+      reliable; use alongside failure_count_12mo for a complete picture.
+    synonyms:
+      - mtbf proxy
+      - days since failure
+      - time since failure
+      - failure-free days
+    format:
+      type: number
+      decimal_places:
+        type: exact
+        places: 1
+
+  - name: avg_days_since_last_pm
+    expr: AVG(days_since_last_pm)
+    display_name: Avg Days Since Last PM
+    comment: Mean days since the most recent completed PM-generated WO. Mirrors the time_since_last_pm Trusted UDF aggregated. Spike indicates a slipping PM program.
+    synonyms:
+      - pm aging
+      - days since pm
+      - time since pm
+      - last pm aging
+    format:
+      type: number
+      decimal_places:
+        type: exact
+        places: 1
+
+  - name: assets_with_failures
+    expr: COUNT_IF(failure_count_12mo > 0)
+    display_name: Assets With Failures (12-mo)
+    comment: Distinct assets with at least one recorded failure in 12 months. Pair with asset_count for "share with failures".
+    synonyms:
+      - failing assets
+      - assets with incidents
+      - troubled assets
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: bad_actor_count
+    expr: COUNT_IF(failure_count_12mo >= 3)
+    display_name: Bad-Actor Asset Count
+    comment: >-
+      Assets with 3+ failures in 12 months (default bad-actor threshold —
+      confirm in workspace glossary). One of four valid framings; cost-weighted
+      bad actors require maximo-maintenance-cost (this skill's gotcha 7 —
+      cost-based framing is owned by cost skill, not here).
+    synonyms:
+      - bad actors
+      - chronic failures
+      - repeat offenders
+      - top failing assets
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: pct_assets_with_failures
+    expr: MEASURE(assets_with_failures) / MEASURE(asset_count)
+    display_name: Percent Assets With Failures
+    comment: Composable — fleet-level reliability indicator. Lower is better.
+    synonyms:
+      - failure rate
+      - share failing
+      - fleet failure rate
+    format:
+      type: percentage
+      decimal_places:
+        type: exact
+        places: 1
+
+  # NOTE: MTBF and MTTR are TIME-WINDOWED metrics — operating_time / failure_count
+  # and AVG(repair_duration) over a window — that don't aggregate cleanly into a
+  # static metric view over the per-asset summary grain. They are best invoked as
+  # the Trusted UDFs (mtbf, mttr) directly, which take window_start / window_end
+  # parameters. The IBM O&G formulas are preserved there. PM compliance similarly
+  # belongs as a UDF since it requires a scheduling window join (pm_compliance).

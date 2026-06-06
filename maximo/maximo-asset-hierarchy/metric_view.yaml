@@ -1,0 +1,182 @@
+# =============================================================================
+# Maximo Asset & Location Hierarchy — Metric View (semantic layer)
+# =============================================================================
+# The governed semantic layer for hierarchical analytics. Unlike a domain-owning
+# skill (work-orders, reliability, cost), this skill rarely owns a metric — it
+# supplies the GROUPING DIMENSION (ancestor, depth, class subtree) that other
+# modules roll their measures up to. So this view is intentionally
+# DIMENSION-HEAVY: the measures here are utility counts only (descendants,
+# leaves, depth). For rollup of cost / WO counts / PM compliance / failures,
+# JOIN this view as the closure key into the owning module's metric view.
+#
+# Source-specific content lives here; CREATE / register / refresh mechanics are
+# the platform skill's job — load `databricks-metric-views`. Registration is
+# owned by maximo-setup (preview-then-apply), not run from this skill.
+#   https://docs.databricks.com/aws/en/business-semantics/metric-views/
+#   https://docs.databricks.com/aws/en/business-semantics/agent-metadata
+#
+# Bind at registration: :catalog, :silver_schema (MBO tables + the enriched
+# rollup view), :gold_schema (where the metric view lives). DBR 17.3+ and YAML 1.1.
+#   CREATE VIEW :catalog.:gold_schema.asset_hierarchy_metrics WITH METRICS LANGUAGE YAML AS $$ <body> $$;
+# =============================================================================
+
+version: 1.1
+source: :catalog.:gold_schema.v_location_rollup_keys
+comment: Canonical hierarchy rollup keys for locations, sliceable by ancestor, depth, system, and site. Supplies the descendant set for any module's metric rollup; does NOT own domain measures (defer to work-orders / cost / reliability).
+
+# v_location_rollup_keys already filters self/ancestor rows and includes SYSTEMID.
+# We do NOT apply a universal filter here — callers usually want to scope by
+# systemid (gotcha 2: location lives in multiple LOCHIERARCHY systems — PRIMARY,
+# STOREROOM, NETWORK, etc.) and that's a dimension, not a constant. The closure
+# already carries SITEID per row (universal SITEID composite-key gotcha — overview
+# gotcha 4 / this skill's gotcha 5).
+
+# ── Dimensions ───────────────────────────────────────────────────────────────
+fields:
+  - name: location
+    expr: location
+    display_name: Location
+    comment: The descendant location code (LOCATIONS.LOCATION). One row per (location, ancestor) pair — every location appears once per ancestor in its chain.
+    synonyms:
+      - leaf location
+      - child location
+      - location code
+
+  - name: ancestor
+    expr: ancestor
+    display_name: Ancestor
+    comment: Any ancestor of the location at any depth (including self at depth 0). Group BY this to roll up child metrics to a parent — region, station, area, process unit, plant.
+    synonyms:
+      - parent
+      - rollup level
+      - parent location
+      - region
+      - station
+      - area
+      - process unit
+
+  - name: site
+    expr: siteid
+    display_name: Site
+    comment: Operating site (SITEID). Always present — hierarchy is site-scoped and so is every metric you roll up through it (overview gotcha 4 / this skill's gotcha 5).
+    synonyms:
+      - facility
+      - plant
+      - location code
+
+  - name: hierarchy_system
+    expr: systemid
+    display_name: Hierarchy System
+    comment: LOCHIERARCHY system (PRIMARY by default; O&G customers may also have PROCESS, UTILITY, NETWORK). A location lives in multiple systems — always filter to one (this skill's gotcha 2) before rolling up, or counts inflate.
+    synonyms:
+      - system
+      - lochierarchy
+      - hierarchy
+      - SYSTEMID
+      - rollup system
+
+  - name: depth_below_ancestor
+    expr: depth_below_ancestor
+    display_name: Depth Below Ancestor
+    comment: Number of edges between this location and its ancestor. 0 = self; 1 = immediate child; N = N levels down. Use to filter rollups to a specific level (e.g. only direct children).
+    synonyms:
+      - depth
+      - level
+      - hierarchy depth
+      - levels down
+
+  - name: ancestor_type
+    expr: ancestor_type
+    display_name: Ancestor Location Type
+    comment: LOCATIONS.TYPE of the ancestor (OPERATING / STOREROOM / LABOR / COURIER / REPAIR / SALVAGE / VENDOR). For physical-tree rollups filter to OPERATING; STOREROOM ancestors are inventory rollups.
+    synonyms:
+      - location type
+      - parent type
+      - rollup type
+
+  - name: ancestor_description
+    expr: ancestor_description
+    display_name: Ancestor Description
+    comment: Free-text description of the ancestor location for human-readable rollup labels.
+    synonyms:
+      - parent name
+      - region name
+      - station name
+
+  - name: location_description
+    expr: location_description
+    display_name: Location Description
+    comment: Free-text description of the descendant location.
+    synonyms:
+      - leaf name
+      - child name
+
+# ── Measures (utility counts — domain metrics live in the OWNING module) ─────
+# This skill INTENTIONALLY ships only utility counts. For "open WOs by region",
+# "cost by station", "PM compliance by area", JOIN this view into the owning
+# module's metric view and group by `ancestor`. Don't redefine the metric here.
+measures:
+  - name: descendant_count
+    expr: COUNT_IF(depth_below_ancestor > 0)
+    display_name: Descendant Count
+    comment: >-
+      Count of strict descendants of an ancestor (depth > 0, excludes self).
+      Mirrors the descendant_count Trusted UDF. Use to size a hierarchy subtree
+      ("how many locations under STN-04?").
+    synonyms:
+      - descendants
+      - children count
+      - locations under
+      - subtree size
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: descendant_or_self_count
+    expr: COUNT(1)
+    display_name: Descendants + Self
+    comment: Count of locations at or under an ancestor, including the ancestor itself (depth = 0 row). Use when "under X" means inclusive (e.g. "cost AT or under station 4").
+    synonyms:
+      - all under
+      - subtree count
+      - at or under
+
+  - name: leaf_count
+    expr: COUNT_IF(depth_below_ancestor > 0 AND location <> ancestor)
+    display_name: Leaf Descendant Count
+    comment: Same as descendant_count but defensively excludes self even if the closure table includes the self-row (self-inclusion varies by deployment — this skill's gotcha 6).
+    synonyms:
+      - leaves
+      - leaf locations
+      - terminal nodes
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: max_depth
+    expr: MAX(depth_below_ancestor)
+    display_name: Max Depth from Ancestor
+    comment: Maximum tree depth from the ancestor to any descendant. Use to characterize how deep a subtree goes ("station 4 has 6 levels below it").
+    synonyms:
+      - hierarchy depth
+      - max levels
+      - tree height
+      - deepest level
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: distinct_locations
+    expr: COUNT(DISTINCT location)
+    display_name: Distinct Locations
+    comment: Distinct descendant locations under an ancestor. Differs from descendant_count when the same location appears under multiple ancestors in the rollup grain (it usually does — a leaf has many ancestors).
+    synonyms:
+      - unique locations
+      - location count
+    format:
+      type: number
+      decimal_places:
+        type: all

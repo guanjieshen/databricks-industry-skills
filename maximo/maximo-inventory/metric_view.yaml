@@ -1,0 +1,290 @@
+# =============================================================================
+# Maximo Inventory — Metric View (semantic layer)
+# =============================================================================
+# The governed semantic layer for inventory analytics. Canonical measures (lifted
+# from metric_udfs.sql) are defined ONCE here and sliceable by storeroom, ABC
+# class, item status, commodity group, and rotating flag. Agent metadata carries
+# the materials-planner vocabulary ("below reorder", "dead stock", "ABC", "on
+# hand", "available", "carrying value", "turns").
+#
+# Source-specific content lives here; CREATE / register / refresh mechanics are
+# the platform skill's job — load `databricks-metric-views`. Registration is
+# owned by maximo-setup (preview-then-apply), not run from this skill.
+#   https://docs.databricks.com/aws/en/business-semantics/metric-views/
+#   https://docs.databricks.com/aws/en/business-semantics/agent-metadata
+#
+# Bind at registration: :catalog, :silver_schema (INVENTORY/INVBALANCES/INVCOST/
+# ITEM MBO tables and the enriched view), :gold_schema (where the metric view
+# lives). DBR 17.3+, YAML 1.1.
+#   CREATE VIEW :catalog.:gold_schema.inventory_metrics WITH METRICS LANGUAGE YAML AS $$ <body> $$;
+# =============================================================================
+
+version: 1.1
+source: :catalog.:gold_schema.v_inventory_position
+comment: Canonical per-(item, storeroom) inventory metrics, sliceable by storeroom, ABC class, item status, commodity group, and stock status.
+
+# No universal filter is appropriate at this layer — querying "below reorder"
+# requires ACTIVE status, but "all inventory" / "dead stock" do not. The source
+# view already excludes non-storeroom locations (this skill's gotcha 4).
+# Status columns are SYNONYMDOMAINs (overview gotcha 5) — stock literals
+# (ACTIVE / OBSOLETE / PENDING) are correct in stock deployments.
+
+# ── Dimensions ───────────────────────────────────────────────────────────────
+fields:
+  - name: storeroom
+    expr: location
+    display_name: Storeroom
+    comment: Storeroom location code (LOCATIONS TYPE='STOREROOM' — this skill's gotcha 4). Same item in two storerooms is two rows.
+    synonyms:
+      - location
+      - warehouse
+      - bin location
+
+  - name: site
+    expr: siteid
+    display_name: Site
+    comment: SITEID composite-key scope (overview gotcha 4).
+    synonyms:
+      - facility
+      - plant
+
+  - name: itemnum
+    expr: itemnum
+    display_name: Item Number
+    comment: The part number (ITEM.ITEMNUM).
+    synonyms:
+      - part number
+      - sku
+      - item code
+      - part
+
+  - name: item_description
+    expr: item_description
+    display_name: Item Description
+    comment: Free-text item description.
+    synonyms:
+      - item name
+      - part description
+
+  - name: abc_class
+    expr: abc_class
+    display_name: ABC Class
+    comment: ABC classification (A / B / C — customer-defined, typically cost × velocity ranking on INVENTORY.ABCTYPE).
+    synonyms:
+      - abc classification
+      - abc type
+      - abc tier
+      - inventory tier
+
+  - name: commodity_group
+    expr: commoditygroup
+    display_name: Commodity Group
+    comment: ITEM.COMMODITYGROUP — broad categorization for grouped analytics.
+    synonyms:
+      - commodity
+      - item group
+      - category
+
+  - name: item_status
+    expr: item_status
+    display_name: Item Status
+    comment: >-
+      ITEM.STATUS — synonym domain ITEMSTATUS (ACTIVE / PENDING / OBSOLETE).
+      Stores customer-renamable synonym VALUE (overview gotcha 5). Only ACTIVE
+      items can be issued.
+    synonyms:
+      - status
+      - active flag
+      - obsolete flag
+
+  - name: inventory_status
+    expr: inventory_status
+    display_name: Inventory Status
+    comment: INVENTORY.STATUS — synonym domain INVSTATUS (ACTIVE / INACTIVE / OBSOLETE / PLANNING). Per-(item, storeroom).
+    synonyms:
+      - inv status
+      - storeroom status
+
+  - name: stock_status
+    expr: stock_status
+    display_name: Stock Status
+    comment: BELOW_REORDER / AT_MIN / AT_MAX / OK — precomputed by v_inventory_position from available qty vs reorder thresholds.
+    synonyms:
+      - reorder status
+      - stock band
+      - stockout risk band
+
+  - name: rotating
+    expr: rotating
+    display_name: Rotating Item
+    comment: ITEM.ROTATING — 1 if the item is tracked by serial number with maintenance history (rotating spare).
+    synonyms:
+      - rotating spare
+      - serialized item
+
+  - name: cost_method
+    expr: cost_method
+    display_name: Cost Method
+    comment: INVENTORY.COSTMETHOD (AVERAGE / FIFO / LIFO / STANDARD) — determines which INVCOST column drives valuation.
+    synonyms:
+      - costing method
+      - valuation method
+
+  - name: currency
+    expr: currency
+    display_name: Currency
+    comment: INVCOST.CURRENCYCODE — multi-currency caveat applies; carrying-value totals across mixed currencies are meaningless (defer multi-currency normalization to maximo-maintenance-cost — this skill's gotcha — currency).
+    synonyms:
+      - currency code
+      - reporting currency
+
+  - name: vendor
+    expr: default_vendor
+    display_name: Default Vendor
+    comment: INVENTORY.VENDOR — default supplier (FK to COMPANIES).
+    synonyms:
+      - supplier
+      - default supplier
+
+# ── Measures (lifted from metric_udfs.sql) ───────────────────────────────────
+measures:
+  - name: on_hand_quantity
+    expr: SUM(on_hand)
+    display_name: On-Hand Quantity (gross)
+    comment: Gross on-hand qty (SUM(INVBALANCES.CURBAL)). Includes reserved stock — for "really available" use available_quantity (this skill's gotcha 2).
+    synonyms:
+      - on hand
+      - curbal
+      - stock on hand
+      - gross qty
+    format:
+      type: number
+      decimal_places:
+        type: exact
+        places: 2
+
+  - name: reserved_quantity
+    expr: SUM(reserved)
+    display_name: Reserved Quantity
+    comment: Quantity committed to future WOs (SUM(INVBALANCES.RESERVEDQTY)). Reservation backlog.
+    synonyms:
+      - reserved
+      - committed
+      - reservation backlog
+    format:
+      type: number
+      decimal_places:
+        type: exact
+        places: 2
+
+  - name: available_quantity
+    expr: SUM(available)
+    display_name: Available Quantity (net of reservations)
+    comment: >-
+      AVAILABLE = CURBAL − RESERVEDQTY (this skill's gotcha 2). Mirrors the
+      item_on_hand / item_total_on_hand Trusted UDFs aggregated across rows.
+      Use for stockout-risk and reorder questions.
+    synonyms:
+      - available
+      - net on hand
+      - really available
+      - stockout-risk qty
+    format:
+      type: number
+      decimal_places:
+        type: exact
+        places: 2
+
+  - name: below_reorder_count
+    expr: COUNT_IF(stock_status IN ('BELOW_REORDER', 'AT_MIN') AND item_status = 'ACTIVE' AND inventory_status = 'ACTIVE')
+    display_name: Items Below Reorder Point
+    comment: >-
+      Distinct (item, storeroom) pairs whose available qty is below reorder point,
+      restricted to ACTIVE items + storerooms. Mirrors the reorder_alert_count
+      Trusted UDF. Synonyms apply (overview gotcha 5) — adjust literals via
+      SYNONYMDOMAIN if renamed.
+    synonyms:
+      - reorder alerts
+      - items below reorder
+      - replenishment count
+      - low stock count
+      - stockouts
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: carrying_value
+    expr: SUM(on_hand * COALESCE(avg_unit_cost, std_unit_cost, last_unit_cost, 0))
+    display_name: Inventory Carrying Value
+    comment: >-
+      Gross on-hand quantity × unit cost (preferring AVGCOST, falling back to
+      STDCOST then LASTCOST). Multi-currency caveat — sum is only meaningful
+      within a single currency code. For multi-currency normalization, defer to
+      maximo-maintenance-cost (this skill's gotcha — currency).
+    synonyms:
+      - inventory value
+      - carrying cost
+      - on-hand value
+      - inventory dollars
+      - stock value
+    format:
+      type: currency
+      currency_code: USD
+      decimal_places:
+        type: exact
+        places: 2
+      abbreviation: compact
+
+  - name: distinct_items
+    expr: COUNT(DISTINCT itemnum)
+    display_name: Distinct Items
+    comment: Distinct item numbers under the current filter.
+    synonyms:
+      - sku count
+      - distinct skus
+      - item count
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: distinct_storerooms
+    expr: COUNT(DISTINCT location)
+    display_name: Distinct Storerooms
+    comment: Distinct storeroom locations under the current filter.
+    synonyms:
+      - storeroom count
+      - warehouse count
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: avg_lead_time_days
+    expr: AVG(lead_time_days)
+    display_name: Avg Lead Time (days)
+    comment: Average procurement lead time (INVENTORY.LEADTIME) across the slice. Drives buffer-stock conversations.
+    synonyms:
+      - lead time
+      - replenishment lead time
+      - procurement lead time
+    format:
+      type: number
+      decimal_places:
+        type: exact
+        places: 1
+
+  - name: pct_below_reorder
+    expr: MEASURE(below_reorder_count) / COUNT(1)
+    display_name: Percent Below Reorder
+    comment: Composable — share of (item, storeroom) records below reorder point. Use as a leading inventory-health indicator.
+    synonyms:
+      - reorder rate
+      - share below reorder
+      - stockout pressure
+    format:
+      type: percentage
+      decimal_places:
+        type: exact
+        places: 1

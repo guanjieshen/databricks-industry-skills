@@ -1,0 +1,274 @@
+# =============================================================================
+# Maximo PM Planning — Metric View (semantic layer)
+# =============================================================================
+# The governed semantic layer for FORWARD-LOOKING PM planning analytics. Sister
+# to maximo-reliability (backward-looking). Canonical measures (lifted from
+# metric_udfs.sql) are defined ONCE here and sliceable by site, craft, asset
+# class, frequency unit, and due bucket. Agent metadata carries the planner /
+# scheduler vocabulary ("PM forecast", "due in N days", "PMs by craft",
+# "PM-to-CM ratio", "route clusters").
+#
+# Source-specific content lives here; CREATE / register / refresh mechanics are
+# the platform skill's job — load `databricks-metric-views`. Registration is
+# owned by maximo-setup (preview-then-apply), not run from this skill.
+#   https://docs.databricks.com/aws/en/business-semantics/metric-views/
+#   https://docs.databricks.com/aws/en/business-semantics/agent-metadata
+#
+# Bind at registration: :catalog, :silver_schema (PM/PMSEQUENCE/JPLABOR/JPMATERIAL
+# MBO tables and v_pm_forecast), :gold_schema. DBR 17.3+, YAML 1.1.
+#   CREATE VIEW :catalog.:gold_schema.pm_planning_metrics WITH METRICS LANGUAGE YAML AS $$ <body> $$;
+# =============================================================================
+
+version: 1.1
+source: :catalog.:gold_schema.v_pm_forecast
+comment: Canonical forward-looking PM planning metrics. One row per (PM, sequence) — sliceable by site, asset class, criticality, frequency, and due bucket. Includes planned labor hours and material cost from referenced JOBPLAN.
+
+# v_pm_forecast already filters to PM.STATUS='ACTIVE' (this skill's gotcha 3) and
+# expands PMSEQUENCE (this skill's gotcha 2). It uses COALESCE(EXTDATE, NEXTDATE)
+# as the effective due date (this skill's gotcha 4). No further universal
+# filtering needed — but resolve PMSTATUS synonyms via SYNONYMDOMAIN if the
+# customer renamed them (overview gotcha 5).
+
+# ── Dimensions ───────────────────────────────────────────────────────────────
+fields:
+  - name: site
+    expr: siteid
+    display_name: Site
+    comment: PM SITEID. Composite-key scope (overview gotcha 4 / this skill's gotcha 5).
+    synonyms:
+      - facility
+      - plant
+
+  - name: org
+    expr: orgid
+    display_name: Org
+    comment: ORGID — required for the org-scoped JOBPLAN / JPLABOR / JPMATERIAL joins (this skill's gotcha 5).
+    synonyms:
+      - organization
+      - business unit
+
+  - name: asset
+    expr: assetnum
+    display_name: Asset
+    comment: PM.ASSETNUM — the asset the PM targets. NULL for location-only PMs.
+    synonyms:
+      - assetnum
+      - equipment
+
+  - name: asset_criticality
+    expr: asset_criticality
+    display_name: Asset Criticality
+    comment: ASSET.CRITICALITY of the PM's asset. Use for risk-weighted forecasting.
+    synonyms:
+      - criticality
+      - asset risk
+
+  - name: location
+    expr: location
+    display_name: Location
+    comment: PM.LOCATION — composes with maximo-asset-hierarchy for region/area rollups. Drives route clustering (v_pm_route_clusters).
+    synonyms:
+      - place
+      - locationid
+      - route location
+
+  - name: jobplan
+    expr: jpnum
+    display_name: Job Plan
+    comment: Effective JPNUM (the PM's JPNUM, or the PMSEQUENCE's JPNUM for multi-cadence PMs). Org-scoped (this skill's gotcha 5).
+    synonyms:
+      - jpnum
+      - job plan number
+      - template
+      - task template
+
+  - name: frequency_unit
+    expr: frequnit
+    display_name: Frequency Unit
+    comment: DAYS / MONTHS / YEARS / HOURS / READINGS — controls whether the PM is calendar- or meter-based.
+    synonyms:
+      - cadence unit
+      - period unit
+
+  - name: frequency
+    expr: frequency
+    display_name: Frequency
+    comment: Cadence value (PM.FREQUENCY or PMSEQUENCE.FREQUENCY for sequenced PMs).
+    synonyms:
+      - interval
+      - period
+      - cadence
+
+  - name: due_bucket
+    expr: due_bucket
+    display_name: Due Bucket
+    comment: OVERDUE / DUE_30D / DUE_60D / DUE_90D / FUTURE — precomputed from effective_due_date.
+    synonyms:
+      - due band
+      - forecast window
+      - aging band
+
+  - name: effective_due_date
+    expr: effective_due_date
+    display_name: Effective Due Date
+    comment: >-
+      COALESCE(EXTDATE, NEXTDATE) — always use the override-aware effective date,
+      never raw NEXTDATE (this skill's gotcha 4). App-server-timezone (overview
+      gotcha 7).
+    synonyms:
+      - due date
+      - next due
+      - forecast date
+      - target date
+    format:
+      type: date
+      date_format: year_month_day
+      leading_zeros: true
+
+  - name: sequence_num
+    expr: sequence_num
+    display_name: PMSEQUENCE Sequence
+    comment: PMSEQUENCE.SEQUENCE (NULL for single-cadence PMs). Multi-cadence PMs are expanded per sequence (this skill's gotcha 2).
+    synonyms:
+      - sequence
+      - cadence sequence
+
+# ── Measures (lifted from metric_udfs.sql) ───────────────────────────────────
+measures:
+  - name: pm_count
+    expr: COUNT(1)
+    display_name: PM Count
+    comment: Count of active PM forecast rows (PMSEQUENCE-expanded). Each cadence on a multi-cadence PM counts separately.
+    synonyms:
+      - pms
+      - active pms
+      - forecast pms
+      - scheduled pms
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: pms_due_in_30d
+    expr: COUNT_IF(due_bucket IN ('OVERDUE', 'DUE_30D'))
+    display_name: PMs Due in 30 Days (or Overdue)
+    comment: Mirrors the pms_due_in_window Trusted UDF for a 30-day forward window plus overdue. Use for next-month planning.
+    synonyms:
+      - 30 day pipeline
+      - upcoming pms
+      - pms due soon
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: pms_due_in_90d
+    expr: COUNT_IF(due_bucket IN ('OVERDUE', 'DUE_30D', 'DUE_60D', 'DUE_90D'))
+    display_name: PMs Due in 90 Days (or Overdue)
+    comment: Mirrors the pms_due_in_window Trusted UDF for a quarter-ahead window plus overdue.
+    synonyms:
+      - quarterly pm forecast
+      - 90 day pipeline
+      - quarter ahead
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: overdue_pm_count
+    expr: COUNT_IF(due_bucket = 'OVERDUE')
+    display_name: Overdue PMs
+    comment: PMs whose effective due date is in the past. Backlog of late preventive work.
+    synonyms:
+      - overdue
+      - late pms
+      - missed pms
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: planned_labor_hours
+    expr: SUM(planned_labor_hours)
+    display_name: Planned Labor Hours
+    comment: >-
+      SUM(JPLABOR.LABORHRS) across forecast PMs. Mirrors the pm_workload_hours
+      Trusted UDF. Slice by craft via v_pm_workload_by_craft (sibling metric
+      view). Pair with maximo-labor-resources capacity for workload-vs-capacity
+      gap analytics.
+    synonyms:
+      - workload hours
+      - forecast hours
+      - planned hours
+      - pm labor demand
+      - craft demand
+    format:
+      type: number
+      decimal_places:
+        type: exact
+        places: 1
+
+  - name: planned_labor_cost
+    expr: SUM(planned_labor_cost)
+    display_name: Planned Labor Cost
+    comment: >-
+      SUM(JPLABOR.LINECOST) across forecast PMs. Plan-time labor cost only —
+      for cost methodology (PM-vs-CM cost, multi-currency normalization) defer
+      to maximo-maintenance-cost (this skill does NOT own cost methodology).
+    synonyms:
+      - planned cost
+      - estimated labor cost
+      - forecast labor cost
+    format:
+      type: currency
+      currency_code: USD
+      decimal_places:
+        type: exact
+        places: 2
+      abbreviation: compact
+
+  - name: planned_material_cost
+    expr: SUM(planned_material_cost)
+    display_name: Planned Material Cost
+    comment: SUM(JPMATERIAL.LINECOST) across forecast PMs. Use for forward material demand sizing; defer cost methodology to maximo-maintenance-cost.
+    synonyms:
+      - planned parts cost
+      - forecast material cost
+      - estimated parts cost
+    format:
+      type: currency
+      currency_code: USD
+      decimal_places:
+        type: exact
+        places: 2
+      abbreviation: compact
+
+  - name: distinct_assets_with_pms
+    expr: COUNT(DISTINCT assetnum)
+    display_name: Assets With Active PMs
+    comment: Distinct assets covered by at least one active PM. Use for PM coverage-gap analysis ("critical assets without any PM").
+    synonyms:
+      - covered assets
+      - pm coverage
+      - assets under pm program
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: pct_overdue
+    expr: MEASURE(overdue_pm_count) / MEASURE(pm_count)
+    display_name: Percent Overdue
+    comment: >-
+      Composable — share of forecast PMs currently overdue. Note: this is NOT
+      SMRP PM compliance (which is tolerance-window-based and owned by
+      maximo-reliability) — this is a planning health indicator only.
+    synonyms:
+      - overdue rate
+      - share overdue
+      - late pm rate
+    format:
+      type: percentage
+      decimal_places:
+        type: exact
+        places: 1

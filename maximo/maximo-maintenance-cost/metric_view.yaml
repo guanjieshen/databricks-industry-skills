@@ -1,0 +1,334 @@
+# =============================================================================
+# Maximo Maintenance Cost — Metric View (semantic layer)
+# =============================================================================
+# The governed semantic layer Genie Agents, AI/BI dashboards, and BI tools query
+# for maintenance-cost metrics. This skill OWNS cost methodology — every other
+# skill's cost measure defers here. Canonical measures (lifted from
+# metric_udfs.sql) are defined ONCE and sliceable by site, asset, asset class,
+# worktype, PM-source, and period. Agent metadata carries the finance / planner
+# vocabulary ("PM-vs-CM cost", "variance", "spend", "cost per asset", "contractor
+# spend", "burn rate").
+#
+# Source-specific content lives here; CREATE / register / refresh mechanics are
+# the platform skill's job — load `databricks-metric-views`. Registration is
+# owned by maximo-setup (preview-then-apply), not run from this skill.
+#   https://docs.databricks.com/aws/en/business-semantics/metric-views/
+#   https://docs.databricks.com/aws/en/business-semantics/agent-metadata
+#
+# Bind at registration: :catalog, :silver_schema (WORKORDER/LABTRANS/MATUSETRANS
+# MBO tables and v_wo_cost_enriched), :gold_schema. DBR 17.3+, YAML 1.1.
+#   CREATE VIEW :catalog.:gold_schema.wo_cost_metrics WITH METRICS LANGUAGE YAML AS $$ <body> $$;
+#
+# Scope: this view is anchored at the WO header grain (v_wo_cost_enriched). For
+# transaction-grain analytics use the LABTRANS / MATUSETRANS aggregates in
+# v_asset_cost_summary / v_cost_by_worktype — sibling metric views can be added
+# alongside. CAUTION: parent-WO header costs do NOT roll up to children (this
+# skill's gotcha 2) — recurse the hierarchy or aggregate LABTRANS/MATUSETRANS
+# for tree totals.
+# =============================================================================
+
+version: 1.1
+source: :catalog.:gold_schema.v_wo_cost_enriched
+comment: Canonical WO-cost metrics, sliceable by site, asset, asset class, criticality, worktype, PM-source, and currency. Owns cost methodology for the family.
+
+# Apply universal WO mechanics ONCE:
+#   woclass='WORKORDER' → exclude PM/CHANGE/RELEASE/ACTIVITY records (overview gotcha 9 / WO skill gotcha 2)
+# We do NOT filter status (closed-cost lives in COMP/CLOSE history — overview
+# gotcha 6 / this skill's "include closed" preamble). We do NOT filter
+# HISTORYFLAG (would silently drop completed cost). Currency mixing caveat
+# applies — group by currency or normalize externally (this skill's gotcha 3).
+filter: woclass = 'WORKORDER'
+
+# ── Dimensions ───────────────────────────────────────────────────────────────
+fields:
+  - name: site
+    expr: siteid
+    display_name: Site
+    comment: Operating site (WORKORDER.SITEID). Composite-key scope (overview gotcha 4).
+    synonyms:
+      - facility
+      - plant
+      - location
+
+  - name: status
+    expr: status
+    display_name: WO Status
+    comment: WO status — SYNONYMDOMAIN value (overview gotcha 5). Resolve COMP/CLOSE via SYNONYMDOMAIN before keying "completed cost" on literals.
+    synonyms:
+      - state
+      - lifecycle status
+
+  - name: worktype
+    expr: worktype
+    display_name: Work Type
+    comment: >-
+      Business intent code (CM/PM/EM/PROJ — customer-configured, this skill's
+      gotcha 4). DIVERGES from PM-source (pm_source) — use pm_source for
+      "PM-generated vs corrective" splits.
+    synonyms:
+      - wo type
+      - maintenance type
+      - business intent
+
+  - name: pm_source
+    expr: pm_source
+    display_name: PM Source
+    comment: >-
+      PM_GENERATED if WORKORDER.PMNUM IS NOT NULL, else NOT_PM. This is the
+      source-of-record split for PM-vs-CM cost analysis (this skill's gotcha 4).
+      Use this — NOT worktype — for canonical PM-vs-CM cost decomposition.
+    synonyms:
+      - pm vs cm
+      - pm flag
+      - preventive vs corrective
+      - pm generated
+
+  - name: asset
+    expr: assetnum
+    display_name: Asset
+    comment: WORKORDER.ASSETNUM. NULL for location-only work (excluded from per-asset cost reports — this skill's gotcha re asset-attributed cost).
+    synonyms:
+      - assetnum
+      - equipment
+      - tag number
+
+  - name: asset_class
+    expr: asset_class_id
+    display_name: Asset Class
+    comment: CLASSSTRUCTUREID of the WO's asset. Cost-by-class for benchmarking.
+    synonyms:
+      - asset classification
+      - asset taxonomy
+
+  - name: asset_criticality
+    expr: asset_criticality
+    display_name: Asset Criticality
+    comment: ASSET.CRITICALITY of the WO's asset. Risk-weighted cost rollups.
+    synonyms:
+      - criticality
+      - asset risk
+
+  - name: location
+    expr: location
+    display_name: Location
+    comment: WORKORDER.LOCATION — where the work happened. Composes with maximo-asset-hierarchy for region/area cost rollups.
+    synonyms:
+      - place
+      - location code
+
+  - name: currency
+    expr: currency
+    display_name: WO Currency
+    comment: >-
+      WORKORDER.WOCURRENCY. Multi-currency caveat (this skill's gotcha 3) —
+      summing LINECOST across currencies is meaningless. Either group by
+      currency or normalize via EXCHANGERATE before reporting totals.
+    synonyms:
+      - currency code
+      - wo currency
+      - reporting currency
+
+  - name: reported_date
+    expr: reportdate
+    display_name: Reported Date
+    comment: When the WO was created (REPORTDATE). App-server-timezone (overview gotcha 7).
+    synonyms:
+      - created date
+      - report date
+    format:
+      type: date
+      date_format: year_month_day
+      leading_zeros: true
+
+  - name: actual_finish
+    expr: actfinish
+    display_name: Actual Finish
+    comment: ACTFINISH — close-date attribution. Note period attribution by transaction date (LABTRANS/MATUSETRANS) usually beats close-date (this skill's gotcha — period attribution).
+    synonyms:
+      - completion date
+      - close date
+      - finish date
+    format:
+      type: date
+      date_format: year_month_day
+      leading_zeros: true
+
+# ── Measures (lifted from metric_udfs.sql) ───────────────────────────────────
+measures:
+  - name: estimated_cost
+    expr: SUM(estimated_cost)
+    display_name: Estimated Cost
+    comment: Sum of header-level estimate cost (EST labor + material + service + tool). Plan-time number — compare to actual_cost for variance.
+    synonyms:
+      - planned cost
+      - estimate
+      - budgeted cost
+    format:
+      type: currency
+      currency_code: USD
+      decimal_places:
+        type: exact
+        places: 2
+      abbreviation: compact
+
+  - name: actual_cost
+    expr: SUM(actual_cost)
+    display_name: Actual Cost
+    comment: >-
+      Sum of header-level actual cost (ACT labor + material + service + tool).
+      ACTTOTALCOST is non-persistent (this skill's gotcha 1) so this composes the
+      persisted columns. For transaction-grain accuracy / post-close edit-history
+      truthfulness, prefer SUM(LABTRANS.LINECOST) + SUM(MATUSETRANS.LINECOST)
+      from v_asset_cost_summary (this skill's gotcha 1).
+    synonyms:
+      - actual spend
+      - spend
+      - maintenance spend
+      - actuals
+      - cost
+    format:
+      type: currency
+      currency_code: USD
+      decimal_places:
+        type: exact
+        places: 2
+      abbreviation: compact
+
+  - name: actual_labor_cost
+    expr: SUM(actual_labor_cost)
+    display_name: Actual Labor Cost
+    comment: WORKORDER.ACTLABCOST sum. Reconcile against SUM(LABTRANS.LINECOST) — they often diverge from edit-history appends (this skill's gotcha 1).
+    synonyms:
+      - labor cost
+      - labor spend
+      - actlabcost
+    format:
+      type: currency
+      currency_code: USD
+      decimal_places:
+        type: exact
+        places: 2
+      abbreviation: compact
+
+  - name: actual_material_cost
+    expr: SUM(actual_material_cost)
+    display_name: Actual Material Cost
+    comment: WORKORDER.ACTMATCOST sum. Reconcile against SUM(MATUSETRANS.LINECOST) (ISSUE − RETURN) for granular accuracy.
+    synonyms:
+      - material cost
+      - parts cost
+      - actmatcost
+    format:
+      type: currency
+      currency_code: USD
+      decimal_places:
+        type: exact
+        places: 2
+      abbreviation: compact
+
+  - name: actual_service_cost
+    expr: SUM(actual_service_cost)
+    display_name: Actual Service Cost
+    comment: ACTSERVCOST — contracted-service spend booked to the WO. Useful for vendor/contractor cost slicing.
+    synonyms:
+      - service cost
+      - contracted service cost
+      - service spend
+    format:
+      type: currency
+      currency_code: USD
+      decimal_places:
+        type: exact
+        places: 2
+      abbreviation: compact
+
+  - name: cost_variance
+    expr: SUM(actual_cost) - SUM(estimated_cost)
+    display_name: Cost Variance (Actual − Estimate)
+    comment: Absolute variance — positive means over budget. Compose with cost_variance_pct for the normalized view.
+    synonyms:
+      - over budget
+      - variance
+      - budget variance
+    format:
+      type: currency
+      currency_code: USD
+      decimal_places:
+        type: exact
+        places: 2
+
+  - name: cost_variance_pct
+    expr: (SUM(actual_cost) - SUM(estimated_cost)) / NULLIF(SUM(estimated_cost), 0)
+    display_name: Cost Variance %
+    comment: >-
+      ((actual - estimate) / estimate). Mirrors the wo_cost_variance_pct
+      Trusted UDF aggregated. NULL when estimate is zero (this skill's gotcha 11).
+    synonyms:
+      - variance percent
+      - variance %
+      - over budget percent
+      - estimate accuracy
+    format:
+      type: percentage
+      decimal_places:
+        type: exact
+        places: 1
+
+  - name: pm_cost
+    expr: SUM(CASE WHEN pm_source = 'PM_GENERATED' THEN actual_cost END)
+    display_name: PM Cost
+    comment: Total actual cost on PM-generated WOs (PMNUM IS NOT NULL). Numerator of pm_vs_cm_cost_ratio Trusted UDF.
+    synonyms:
+      - preventive cost
+      - pm spend
+      - planned maintenance cost
+    format:
+      type: currency
+      currency_code: USD
+      decimal_places:
+        type: exact
+        places: 2
+      abbreviation: compact
+
+  - name: cm_cost
+    expr: SUM(CASE WHEN pm_source = 'NOT_PM' THEN actual_cost END)
+    display_name: CM Cost
+    comment: Total actual cost on non-PM (corrective) WOs. Denominator of pm_vs_cm_cost_ratio Trusted UDF.
+    synonyms:
+      - corrective cost
+      - cm spend
+      - unplanned maintenance cost
+      - reactive cost
+    format:
+      type: currency
+      currency_code: USD
+      decimal_places:
+        type: exact
+        places: 2
+      abbreviation: compact
+
+  - name: pm_vs_cm_cost_ratio
+    expr: MEASURE(pm_cost) / NULLIF(MEASURE(cm_cost), 0)
+    display_name: PM-vs-CM Cost Ratio
+    comment: Composable — PM_cost / CM_cost. Mirrors the pm_vs_cm_cost_ratio Trusted UDF. Healthier programs trend > 1 (more spend on planned work than corrective).
+    synonyms:
+      - pm cm ratio
+      - preventive vs corrective ratio
+      - planned vs unplanned cost ratio
+    format:
+      type: number
+      decimal_places:
+        type: exact
+        places: 2
+
+  - name: wo_count
+    expr: COUNT(1)
+    display_name: WO Count
+    comment: Count of WOs (after woclass filter). Useful as a denominator for per-WO average cost.
+    synonyms:
+      - work orders
+      - wo volume
+    format:
+      type: number
+      decimal_places:
+        type: all

@@ -1,0 +1,223 @@
+# =============================================================================
+# Maximo Labor & Resources — Metric View (semantic layer)
+# =============================================================================
+# The governed semantic layer for labor-master / capacity analytics. Canonical
+# measures (lifted from metric_udfs.sql) are defined ONCE here and sliceable by
+# craft, site, vendor, labor type (employee vs contractor), and qualification.
+# Agent metadata carries the planner / supervisor vocabulary ("capacity",
+# "utilization", "expiring certs", "contractor mix", "crew strength").
+#
+# Source-specific content lives here; CREATE / register / refresh mechanics are
+# the platform skill's job — load `databricks-metric-views`. Registration is
+# owned by maximo-setup (preview-then-apply), not run from this skill.
+#   https://docs.databricks.com/aws/en/business-semantics/metric-views/
+#   https://docs.databricks.com/aws/en/business-semantics/agent-metadata
+#
+# Bind at registration: :catalog, :silver_schema (LABOR/PERSON/QUALPERSON/
+# CALENDAR/WORKPERIOD/AVAILREFLY MBO tables and v_labor_position), :gold_schema.
+# DBR 17.3+, YAML 1.1.
+#   CREATE VIEW :catalog.:gold_schema.labor_metrics WITH METRICS LANGUAGE YAML AS $$ <body> $$;
+#
+# Scope: this view is anchored at the LABOR-master grain (v_labor_position).
+# Workload-vs-capacity gap analytics (week × craft) live in
+# v_crew_capacity / v_pm_workload_by_craft — they could warrant a sibling
+# metric view and a workload metric view in maximo-pm-planning.
+# =============================================================================
+
+version: 1.1
+source: :catalog.:gold_schema.v_labor_position
+comment: Canonical labor-master metrics (one row per LABOR), sliceable by craft, site, labor type (employee vs contractor), and vendor.
+
+# Apply the universal labor gotcha ONCE — only ACTIVE labor counts toward
+# capacity / contractor-mix / utilization analytics. LABOR.STATUS is a synonym
+# domain (overview gotcha 5) — switch to SYNONYMDOMAIN resolution if the
+# deployment renamed synonyms. Inactive labor still appears in v_labor_position
+# for historical analytics; filter at the metric layer.
+filter: status = 'ACTIVE'
+
+# ── Dimensions ───────────────────────────────────────────────────────────────
+fields:
+  - name: craft
+    expr: default_craft
+    display_name: Craft
+    comment: Default craft of the labor (LABOR.CRAFT — ELEC / MECH / INST / etc.). For per-craft-rate analytics use a richer join via LABORCRAFTRATE.
+    synonyms:
+      - trade
+      - discipline
+      - skill
+      - craft code
+
+  - name: skill_level
+    expr: default_skill_level
+    display_name: Skill Level
+    comment: LABOR.SKILLLEVEL — default skill tier within the craft.
+    synonyms:
+      - skill tier
+      - skill rating
+      - level
+
+  - name: org
+    expr: orgid
+    display_name: Org
+    comment: ORGID — composite-key scope for labor (overview gotcha 4).
+    synonyms:
+      - organization
+      - business unit
+
+  - name: labor_type
+    expr: labor_type
+    display_name: Labor Type
+    comment: >-
+      EMPLOYEE or CONTRACTOR (precomputed from VENDOR/OUTSIDELABOR — this skill's
+      gotcha 2). Customer convention varies; confirm via workspace glossary
+      before any contractor-mix metric.
+    synonyms:
+      - contractor vs employee
+      - employee type
+      - resource type
+      - inside vs outside labor
+
+  - name: vendor
+    expr: contractor_vendor
+    display_name: Contractor Vendor
+    comment: LABOR.VENDOR — FK to COMPANIES for contractor labor; NULL for employees.
+    synonyms:
+      - supplier
+      - contractor company
+      - outside vendor
+
+  - name: persongroup
+    expr: default_persongroup
+    display_name: Person Group
+    comment: LABOR.PERSONGROUP — workflow assignment / on-call rotation grouping.
+    synonyms:
+      - team
+      - group
+      - assignment group
+      - on-call group
+
+  - name: department
+    expr: department
+    display_name: Department
+    comment: PERSON.DEPARTMENT — organizational placement for the underlying person.
+    synonyms:
+      - dept
+      - org placement
+
+  - name: supervisor
+    expr: supervisor_personid
+    display_name: Supervisor
+    comment: PERSON.SUPERVISOR — chain-of-supervision personid.
+    synonyms:
+      - manager
+      - reports to
+
+  - name: calendar
+    expr: default_calendar
+    display_name: Calendar
+    comment: LABOR.CALNUM — default working calendar driving scheduled hours via WORKPERIOD.
+    synonyms:
+      - calnum
+      - working calendar
+      - shift calendar
+
+  - name: shift
+    expr: default_shift
+    display_name: Shift
+    comment: LABOR.SHIFTNUM — default shift for capacity / WORKPERIOD calculations.
+    synonyms:
+      - shiftnum
+      - default shift
+
+# ── Measures (lifted from metric_udfs.sql) ───────────────────────────────────
+measures:
+  - name: labor_count
+    expr: COUNT(1)
+    display_name: Labor Count
+    comment: Count of ACTIVE labor records (after the status filter). Use as the workforce-size denominator.
+    synonyms:
+      - workforce
+      - headcount
+      - active labor
+      - resource count
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: employee_count
+    expr: COUNT_IF(labor_type = 'EMPLOYEE')
+    display_name: Employee Count
+    comment: Count of employee labor (precomputed from VENDOR/OUTSIDELABOR). Identification convention is customer-specific (this skill's gotcha 2).
+    synonyms:
+      - employees
+      - inside labor
+      - employee headcount
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: contractor_count
+    expr: COUNT_IF(labor_type = 'CONTRACTOR')
+    display_name: Contractor Count
+    comment: Count of contractor labor (LABOR.VENDOR IS NOT NULL by default). Confirm contractor convention before relying.
+    synonyms:
+      - contractors
+      - outside labor
+      - vendor labor
+      - third-party labor
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: pct_contractor
+    expr: MEASURE(contractor_count) / MEASURE(labor_count)
+    display_name: Percent Contractor
+    comment: Composable — contractor mix as share of active workforce. Key sourcing-strategy metric.
+    synonyms:
+      - contractor mix
+      - contractor share
+      - outside labor share
+      - contingent workforce share
+    format:
+      type: percentage
+      decimal_places:
+        type: exact
+        places: 1
+
+  - name: labor_with_current_quals
+    expr: COUNT_IF(current_qualifications > 0)
+    display_name: Labor With Any Current Qualification
+    comment: Count of active labor with at least one non-expired ACTIVE qualification. Mirrors the qualified_labor_count Trusted UDF (when filtered to a specific qualification). Expired certs are excluded (this skill's gotcha 4).
+    synonyms:
+      - qualified labor
+      - qualified workforce
+      - certified labor
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: avg_qualifications_per_labor
+    expr: AVG(current_qualifications)
+    display_name: Avg Qualifications per Labor
+    comment: Mean number of current qualifications per active labor record. Workforce-skills depth indicator.
+    synonyms:
+      - avg quals
+      - skills depth
+      - mean certs per worker
+    format:
+      type: number
+      decimal_places:
+        type: exact
+        places: 2
+
+  # NOTE: capacity (crew_capacity_hours), utilization (labor_utilization_pct),
+  # expired qual count (expired_qualifications_count), and vacation impact
+  # (vacation_impact_hours) are time-window UDFs that operate on WORKPERIOD /
+  # LABTRANS / AVAILREFLY / QUALPERSON across a window. They don't aggregate
+  # cleanly into a metric-view measure over the LABOR-master grain — call the
+  # Trusted UDFs directly (or compose a sibling metric view over v_crew_capacity
+  # / v_qualification_expiry).
