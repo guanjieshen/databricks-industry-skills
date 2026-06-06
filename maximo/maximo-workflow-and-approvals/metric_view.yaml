@@ -1,0 +1,281 @@
+# =============================================================================
+# Maximo Workflow & Approvals — Metric View (semantic layer)
+# =============================================================================
+# The governed semantic layer for workflow / approval analytics — works across
+# every Maximo business object (WORKORDER, PR, PO, INVOICE, TICKET, INCIDENT,
+# MOC). Canonical measures (lifted from metric_udfs.sql) are defined ONCE here
+# and sliceable by process, business object, node, and assignee/group. Agent
+# metadata carries the approver / analyst vocabulary ("stuck in approval",
+# "time in approval", "bottleneck node", "approval pass rate", "my inbox").
+#
+# Source-specific content lives here; CREATE / register / refresh mechanics are
+# the platform skill's job — load `databricks-metric-views`. Registration is
+# owned by maximo-setup (preview-then-apply), not run from this skill.
+#   https://docs.databricks.com/aws/en/business-semantics/metric-views/
+#   https://docs.databricks.com/aws/en/business-semantics/agent-metadata
+#
+# Bind at registration: :catalog, :silver_schema (WFINSTANCE/WFASSIGNMENT/
+# WFNODE/WFTRANSACTION MBO tables and v_open_approvals), :gold_schema. DBR
+# 17.3+, YAML 1.1.
+#   CREATE VIEW :catalog.:gold_schema.workflow_metrics WITH METRICS LANGUAGE YAML AS $$ <body> $$;
+#
+# Scope: this view is anchored at the OPEN assignment grain (v_open_approvals)
+# for stuck-count / bottleneck / SLA analytics. Closed-workflow cycle-time
+# analytics live in v_workflow_cycle_times — a sibling metric view there can
+# hold mean_cycle_time / approval_pass_rate.
+# =============================================================================
+
+version: 1.1
+source: :catalog.:gold_schema.v_open_approvals
+comment: Canonical open-approvals metrics, sliceable by process, business-object type, node, assignee, and assignee group. Anchored at the active assignment grain (WFASSIGNMENT.ASSIGNSTATUS='ACTIVE' AND WFINSTANCE.ACTIVE=1).
+
+# The source view already applies:
+#   wa.assignstatus = 'ACTIVE'  AND wi.active = 1
+# which is the canonical "currently in workflow" filter (this skill's gotchas
+# 1, 3, 4 — FORWARDED is narrative, ACTIVE=0 includes cancelled, WAPPR ≠ in
+# workflow). The two-condition filter is the only safe "currently in approval"
+# test. No further universal filter needed.
+
+# ── Dimensions ───────────────────────────────────────────────────────────────
+fields:
+  - name: process
+    expr: processname
+    display_name: Workflow Process
+    comment: WFINSTANCE.PROCESSNAME (e.g. WOAPPR, PRAPPR, POAPPR, INVCAPPR). Slice by process to compare approval cycles.
+    synonyms:
+      - process name
+      - approval process
+      - workflow type
+      - wf process
+
+  - name: business_object
+    expr: ownertable
+    display_name: Business Object
+    comment: WFINSTANCE.OWNERTABLE — the business-object table (WORKORDER / PR / PO / INVOICE / TICKET / INCIDENT / MOC). The OWNERID surrogate-key map applies (this skill's gotcha 5).
+    synonyms:
+      - object type
+      - record type
+      - owner table
+
+  - name: owner_id
+    expr: ownerid
+    display_name: Owner ID
+    comment: >-
+      The owning business record's surrogate unique-ID (WORKORDERID, PRID, POID,
+      INVOICEID, TICKETUID — NOT the displayable key like WONUM). Custom objects
+      vary; confirm via MAXOBJECT.uniquecolumnname (this skill's gotcha 5).
+    synonyms:
+      - record id
+      - workorderid
+      - poid
+      - ticketuid
+
+  - name: node_type
+    expr: nodetype
+    display_name: Node Type
+    comment: WFNODE.NODETYPE (START / TASK / CONDITION / SUBPROCESS / WAIT / STOP). Most stuck-in-approval analysis filters TASK.
+    synonyms:
+      - workflow node type
+      - step type
+
+  - name: node_title
+    expr: node_title
+    display_name: Node Title
+    comment: WFNODE.TITLE — display label for the current node. Group BY this for bottleneck-node analytics ("which step is slowest").
+    synonyms:
+      - node name
+      - step name
+      - bottleneck node
+      - workflow step
+
+  - name: current_assignee
+    expr: current_assignee_code
+    display_name: Current Assignee
+    comment: WFASSIGNMENT.ASSIGNCODE — the current owner of the assignment (reassign/escalate sets this in place — this skill's gotcha 6).
+    synonyms:
+      - approver
+      - owner
+      - assignee code
+
+  - name: assigned_person
+    expr: assigned_to_person
+    display_name: Assigned Person
+    comment: WFASSIGNMENT.PERSONID — assigned-to-individual case (NULL when assigned to a group).
+    synonyms:
+      - person
+      - personid
+      - assigned to
+
+  - name: assigned_group
+    expr: assigned_to_group
+    display_name: Assigned Group
+    comment: WFASSIGNMENT.PERSONGROUP — assigned-to-group case (peers see the assignment but only one acts).
+    synonyms:
+      - persongroup
+      - approval group
+      - team
+      - group
+
+  - name: past_sla
+    expr: past_sla
+    display_name: Past SLA
+    comment: TRUE/FALSE — has the assignment passed its DUEDATE (SLA threshold from the Task Node's Escalation Time Limit).
+    synonyms:
+      - sla breached
+      - overdue
+      - escalation due
+      - past due
+
+  - name: workflow_started_at
+    expr: workflow_started_at
+    display_name: Workflow Started
+    comment: WFINSTANCE.STARTDATE — when the current workflow began on this record. App-server-timezone (overview gotcha 7).
+    synonyms:
+      - workflow start
+      - approval start
+      - submitted date
+    format:
+      type: date
+      date_format: year_month_day
+      leading_zeros: true
+
+  - name: in_inbox_since
+    expr: in_inbox_since
+    display_name: In Inbox Since
+    comment: WFASSIGNMENT.STARTDATE — when this assignment entered the assignee's inbox. Use as the per-assignment time-in-approval start.
+    synonyms:
+      - assigned since
+      - inbox since
+      - waiting since
+      - approval waiting since
+    format:
+      type: date
+      date_format: year_month_day
+      leading_zeros: true
+
+# ── Measures (lifted from metric_udfs.sql) ───────────────────────────────────
+measures:
+  - name: open_approval_count
+    expr: COUNT(DISTINCT wfid)
+    display_name: Open Approval Count
+    comment: >-
+      Distinct workflow instances with an ACTIVE assignment (the "stuck-in-
+      approval" denominator). Mirrors the open_approvals_count Trusted UDF when
+      filtered to a process. Keys on WFINSTANCE.ACTIVE=1 AND
+      WFASSIGNMENT.ASSIGNSTATUS='ACTIVE' — never on the business-object STATUS
+      (this skill's gotcha 4 — WAPPR ≠ in workflow).
+    synonyms:
+      - open approvals
+      - in approval count
+      - pending approvals
+      - stuck in approval
+      - pending tasks
+      - inbox count
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: open_assignment_count
+    expr: COUNT(1)
+    display_name: Open Assignment Count
+    comment: Count of distinct (wfid, nodeid, assignee) assignment rows currently active. Differs from open_approval_count when a workflow has multiple parallel assignments (e.g. group peers).
+    synonyms:
+      - assignments
+      - active assignments
+      - inbox rows
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: past_sla_count
+    expr: COUNT_IF(past_sla = TRUE)
+    display_name: Past-SLA Count
+    comment: Active assignments past their DUEDATE. SLA-breach indicator; key escalation metric.
+    synonyms:
+      - sla breaches
+      - escalations
+      - past sla
+      - overdue approvals
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: avg_assignment_hours_open
+    expr: AVG(assignment_hours_open)
+    display_name: Avg Hours in Inbox
+    comment: >-
+      Mean hours since assignment entered the inbox (WFASSIGNMENT.STARTDATE →
+      now). Composes with current_approval_age Trusted UDF at the per-record
+      grain.
+    synonyms:
+      - mean time in inbox
+      - avg approval wait
+      - mean wait
+      - average time waiting
+    format:
+      type: number
+      decimal_places:
+        type: exact
+        places: 1
+
+  - name: avg_workflow_hours_open
+    expr: AVG(workflow_hours_open)
+    display_name: Avg Workflow Hours Open
+    comment: Mean hours since the workflow itself started (WFINSTANCE.STARTDATE → now). Includes ALL upstream nodes, not just the current one.
+    synonyms:
+      - mean workflow age
+      - average workflow time
+      - end-to-end approval age
+    format:
+      type: number
+      decimal_places:
+        type: exact
+        places: 1
+
+  - name: distinct_assignees
+    expr: COUNT(DISTINCT current_assignee_code)
+    display_name: Distinct Assignees
+    comment: Distinct approvers currently holding active assignments. Use to gauge approval-workload concentration.
+    synonyms:
+      - approvers
+      - unique approvers
+      - assignees count
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: distinct_nodes
+    expr: COUNT(DISTINCT nodeid)
+    display_name: Distinct Nodes
+    comment: Distinct workflow nodes currently holding active assignments. Top by node_title to find bottleneck nodes.
+    synonyms:
+      - bottleneck nodes
+      - active nodes
+      - steps in flight
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: pct_past_sla
+    expr: MEASURE(past_sla_count) / MEASURE(open_assignment_count)
+    display_name: Percent Past SLA
+    comment: Composable — share of open assignments past their DUEDATE. Key SLA-health KPI.
+    synonyms:
+      - sla breach rate
+      - escalation rate
+      - percent overdue approvals
+    format:
+      type: percentage
+      decimal_places:
+        type: exact
+        places: 1
+
+  # NOTE: mean_cycle_time and approval_pass_rate are CLOSED-workflow metrics
+  # (active=0, terminating WFTRANSACTION) that don't fit this view's open-
+  # assignment grain. They are best invoked as the Trusted UDFs directly, or
+  # registered as a sibling metric view over v_workflow_cycle_times.

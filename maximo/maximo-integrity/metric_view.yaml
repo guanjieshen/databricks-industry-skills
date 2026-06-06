@@ -1,0 +1,251 @@
+# =============================================================================
+# Maximo Integrity — Metric View (semantic layer)
+# =============================================================================
+# The governed semantic layer for asset-integrity analytics: corrosion trending,
+# remaining life, and regulatory inspection compliance (API 510/570, B31.4,
+# CSA Z662, DOT 49 CFR). Canonical measures (lifted from metric_udfs.sql) are
+# defined ONCE here and sliceable by site, asset, meter, asset class, and
+# regulatory regime / worktype. Agent metadata carries the integrity-engineer
+# vocabulary ("UT thickness", "ST vs LT rate", "remaining life", "RBI",
+# "next due", "vessels overdue").
+#
+# Source-specific content lives here; CREATE / register / refresh mechanics are
+# the platform skill's job — load `databricks-metric-views`. Registration is
+# owned by maximo-setup (preview-then-apply), not run from this skill.
+#   https://docs.databricks.com/aws/en/business-semantics/metric-views/
+#   https://docs.databricks.com/aws/en/business-semantics/agent-metadata
+#
+# Bind at registration: :catalog, :silver_schema (PM/MEASUREPOINT/METERREADING/
+# ASSETMETER MBO tables and the enriched view), :gold_schema (where the metric
+# view lives). DBR 17.3+, YAML 1.1.
+#   CREATE VIEW :catalog.:gold_schema.integrity_inspection_metrics WITH METRICS LANGUAGE YAML AS $$ <body> $$;
+#
+# Coverage: this view is scoped to the inspection-schedule grain (active
+# regulatory-inspection PMs). Corrosion-rate metrics are per-(asset, meter) —
+# they would warrant a sibling metric view over v_corrosion_trends; some
+# rate-aware measures here reference asset-level via the PM's assetnum.
+# =============================================================================
+
+version: 1.1
+source: :catalog.:gold_schema.v_inspection_schedule
+comment: Canonical regulatory inspection metrics. One row per active inspection PM; sliceable by site, asset class, asset criticality, worktype/regulatory code, and due bucket.
+
+# v_inspection_schedule already filters active inspection PMs (pm.__END_AT IS NULL,
+# jp.worktype IN regulatory codes). We do NOT add a universal filter — the
+# regulatory worktype set is customer-specific (this skill's gotcha 7 — inspection
+# WO isolation has no Maximo-universal flag). Status synonyms and HISTORYFLAG
+# semantics on the executing WO side are owned by maximo-overview / work-orders.
+
+# ── Dimensions ───────────────────────────────────────────────────────────────
+fields:
+  - name: site
+    expr: siteid
+    display_name: Site
+    comment: PM SITEID. Composite-key scope (overview gotcha 4).
+    synonyms:
+      - facility
+      - plant
+      - location
+
+  - name: asset
+    expr: assetnum
+    display_name: Asset
+    comment: Asset under inspection (PM.ASSETNUM). For pipe segments inspected at the LOCATIONS grain see this skill's gotcha 9.
+    synonyms:
+      - assetnum
+      - vessel
+      - equipment
+      - piping segment
+
+  - name: asset_class
+    expr: asset_class_id
+    display_name: Asset Class
+    comment: CLASSSTRUCTUREID of the inspected asset. Use for class-aggregated compliance ("pressure vessels", "above-ground piping" — confirm class-id mapping in workspace glossary).
+    synonyms:
+      - asset classification
+      - asset taxonomy
+      - vessel class
+      - pipe class
+
+  - name: asset_criticality
+    expr: asset_criticality
+    display_name: Asset Criticality
+    comment: ASSET.CRITICALITY. Drives risk-weighted compliance views and feeds RBI score severity.
+    synonyms:
+      - criticality
+      - asset risk
+      - severity
+
+  - name: worktype
+    expr: worktype
+    display_name: Worktype / Regulatory Code
+    comment: >-
+      JOBPLAN.WORKTYPE — the regulatory regime tag (e.g. API510, API570, B31_4,
+      CSA_Z662, REG, INSP). Customer-specific set — confirm via workspace
+      glossary (this skill's gotcha 7).
+    synonyms:
+      - regulatory code
+      - inspection regime
+      - api 510
+      - api 570
+      - b31.4
+      - csa z662
+      - dot 49 cfr
+      - inspection type
+
+  - name: frequency
+    expr: frequency
+    display_name: Frequency
+    comment: Cadence value (PM.FREQUENCY). Pair with frequency_unit.
+    synonyms:
+      - interval
+      - inspection interval
+      - period
+
+  - name: frequency_unit
+    expr: frequnit
+    display_name: Frequency Unit
+    comment: DAYS / MONTHS / YEARS / HOURS / READINGS — paired with frequency for the cadence.
+    synonyms:
+      - cadence unit
+      - interval unit
+
+  - name: due_bucket
+    expr: due_bucket
+    display_name: Due Bucket
+    comment: OVERDUE / DUE_30D / DUE_90D / DUE_180D / FUTURE — precomputed by v_inspection_schedule.
+    synonyms:
+      - due window
+      - aging band
+      - overdue band
+
+  - name: next_due_date
+    expr: nextdate
+    display_name: Next Due Date
+    comment: >-
+      Flat PM.NEXTDATE. Note this is NOT the API-510/570 code-correct due date —
+      that's min(statutory_max, 0.5 × remaining_life) and tightens as the asset
+      ages (this skill's gotcha 4 / next_inspection_due_code UDF). Use this
+      field as a fallback when no thickness data is available.
+    synonyms:
+      - nextdate
+      - due date
+      - scheduled date
+    format:
+      type: date
+      date_format: year_month_day
+      leading_zeros: true
+
+  - name: last_inspection_date
+    expr: laststartdate
+    display_name: Last Inspection Date
+    comment: When the inspection last started (PM.LASTSTARTDATE). Anchor for next-due cadence.
+    synonyms:
+      - last inspected
+      - prior inspection
+      - last inspection
+    format:
+      type: date
+      date_format: year_month_day
+      leading_zeros: true
+
+# ── Measures (lifted from metric_udfs.sql) ───────────────────────────────────
+measures:
+  - name: active_inspection_pm_count
+    expr: COUNT(1)
+    display_name: Active Inspection PMs
+    comment: Count of active regulatory-inspection PMs (after worktype + active filter applied in the source view).
+    synonyms:
+      - inspection pms
+      - regulatory pms
+      - active inspections
+      - inspection program size
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: overdue_inspection_count
+    expr: COUNT_IF(due_bucket = 'OVERDUE')
+    display_name: Overdue Inspections
+    comment: Inspections past their PM.NEXTDATE. For the code-correct overdue definition (per-component half-life-based) use next_inspection_due_code instead — flat NEXTDATE is a fallback (this skill's gotcha 4).
+    synonyms:
+      - overdue
+      - past due
+      - missed inspections
+      - non-compliant inspections
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: due_30d_count
+    expr: COUNT_IF(due_bucket IN ('OVERDUE', 'DUE_30D'))
+    display_name: Due in 30 Days (or Overdue)
+    comment: Inspections due in the next 30 days plus already-overdue. Workload-planning window.
+    synonyms:
+      - upcoming inspections
+      - 30-day pipeline
+      - due soon
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: avg_days_overdue
+    expr: AVG(CASE WHEN nextdate < current_date() THEN datediff(DAY, nextdate, current_date()) END)
+    display_name: Avg Days Overdue
+    comment: Mean overdue days across the overdue set. Pair with overdue_inspection_count for severity.
+    synonyms:
+      - average overdue
+      - mean overdue days
+    format:
+      type: number
+      decimal_places:
+        type: exact
+        places: 1
+
+  - name: distinct_assets_under_program
+    expr: COUNT(DISTINCT assetnum)
+    display_name: Distinct Inspected Assets
+    comment: Distinct assets with at least one active inspection PM. Use for program-coverage sanity checks.
+    synonyms:
+      - inspected assets
+      - asset coverage
+      - assets in inspection program
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: pct_overdue
+    expr: MEASURE(overdue_inspection_count) / MEASURE(active_inspection_pm_count)
+    display_name: Percent Overdue
+    comment: >-
+      Composable — share of active inspection PMs currently overdue. NOTE: this
+      is regulatory binary (in/out of code at the statutory deadline) — DIFFERENT
+      from SMRP PM compliance (tolerance window, owned by maximo-reliability).
+      Mirrors the binary side of inspection_on_time_compliance.
+    synonyms:
+      - overdue rate
+      - non-compliance rate
+      - regulatory non-compliance
+    format:
+      type: percentage
+      decimal_places:
+        type: exact
+        places: 1
+
+  - name: critical_overdue_count
+    expr: COUNT_IF(due_bucket = 'OVERDUE' AND asset_criticality IS NOT NULL AND asset_criticality >= 7)
+    display_name: High-Criticality Overdue
+    comment: Overdue inspections on high-criticality assets (ASSET.CRITICALITY >= 7 by convention — confirm threshold in workspace glossary). Key RBI hot-list metric.
+    synonyms:
+      - critical overdue
+      - high-risk overdue
+      - rbi hot list
+      - bad actors inspections
+    format:
+      type: number
+      decimal_places:
+        type: all

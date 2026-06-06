@@ -1,0 +1,276 @@
+# =============================================================================
+# Maximo HSE — Metric View (semantic layer)
+# =============================================================================
+# The governed semantic layer Genie Agents, AI/BI dashboards, and BI tools query
+# for HSE metrics. Canonical measures (lifted from metric_udfs.sql) are defined
+# ONCE here and sliceable by site, incident category, classification, severity,
+# and time. Agent metadata (display_name / comment / format / synonyms) is what
+# lets Genie discover and correctly use each measure from natural language —
+# synonyms carry the real HSE / regulatory-reporting vocabulary ("TRIR", "LTIR",
+# "near miss", "recordable", "open permits").
+#
+# Source-specific content lives here; CREATE / register / refresh mechanics are
+# the platform skill's job — load `databricks-metric-views`. Registration is
+# owned by maximo-setup (preview-then-apply), not run from this skill.
+#   https://docs.databricks.com/aws/en/business-semantics/metric-views/
+#   https://docs.databricks.com/aws/en/business-semantics/agent-metadata
+#
+# Bind at registration: :catalog, :silver_schema (TICKET + PLUSG* MBO tables and
+# the enriched view), :gold_schema (where the metric view lives). DBR 17.3+ /
+# YAML 1.1.
+#   CREATE VIEW :catalog.:gold_schema.hse_incident_metrics WITH METRICS LANGUAGE YAML AS $$ <body> $$;
+#
+# Coverage note: incidents = TICKET CLASS='INCIDENT' (no standalone INCIDENT
+# table — this skill's gotcha 1). Permit metrics live in a separate plusgpermitwork
+# view and would warrant a sibling metric view (`v_open_permits`); this file is
+# scoped to incident metrics.
+# =============================================================================
+
+version: 1.1
+source: :catalog.:gold_schema.v_incidents_enriched
+comment: Canonical incident metrics (TICKET CLASS='INCIDENT', PLUSG O&G overlay), sliceable by site, category, severity, asset class, location, and reported date.
+
+# Apply the universal HSE gotchas ONCE (the enriched view already filters CLASS='INCIDENT'):
+#   historyflag = 0  → exclude closed/cancelled/rejected tickets per Maximo's
+#                       standard List-tab convention (overview gotcha 6 / this
+#                       skill's gotcha 1). Re-include closed by overriding this
+#                       filter in the query if you need full lifetime counts.
+# Status remains a SYNONYMDOMAIN value (domainid=INCIDENTSTATUS) — overview
+# gotcha 5; stock literals: NEW/QUEUED/PENDING/INPROG/RESOLVED/CLOSED.
+filter: historyflag = 0
+
+# ── Dimensions ───────────────────────────────────────────────────────────────
+fields:
+  - name: site
+    expr: siteid
+    display_name: Site
+    comment: Operating site (TICKET.SITEID). Composite-key scope (overview gotcha 4).
+    synonyms:
+      - facility
+      - plant
+      - location
+
+  - name: status
+    expr: status
+    display_name: Incident Status
+    comment: >-
+      Ticket lifecycle status. Stores the customer-renamable synonym VALUE, not
+      the internal MAXVALUE (overview gotcha 5) — resolve via SYNONYMDOMAIN
+      WHERE domainid='INCIDENTSTATUS'. Stock set:
+      NEW/QUEUED/PENDING/INPROG/RESOLVED/CLOSED.
+    synonyms:
+      - incident status
+      - state
+      - ticket status
+
+  - name: incident_category
+    expr: incidentcategory
+    display_name: Incident Category
+    comment: >-
+      Customer-configured category code. The "recordable / lost-time / near-miss /
+      first-aid" classification is deployment-specific (often driven by
+      CLASSSTRUCTUREID or a value list, not a stock column — this skill's gotcha 5).
+      Treat literal recordable codes as parameters; confirm the mapping in the
+      workspace glossary before computing TRIR/LTIR.
+    synonyms:
+      - category
+      - incident class
+      - recordable category
+      - osha recordable
+      - osha category
+
+  - name: severity
+    expr: severity
+    display_name: Severity
+    comment: >-
+      Customer-configured severity. UNVERIFIED stock column — often driven by
+      CLASSSTRUCTUREID. Confirm column existence in MAXATTRIBUTE before relying.
+    synonyms:
+      - tier
+      - api rp 754 tier
+      - severity level
+
+  - name: classification
+    expr: incident_classification
+    display_name: Classification
+    comment: TICKET.CLASSSTRUCTUREID — the customer's classification path. Often the real source of "recordable / Tier 1-4" mapping.
+    synonyms:
+      - classstructureid
+      - taxonomy
+
+  - name: asset_class
+    expr: asset_class_id
+    display_name: Asset Class
+    comment: CLASSSTRUCTUREID of the asset involved in the incident. Use for asset-class-weighted incident analysis.
+    synonyms:
+      - asset classification
+      - asset taxonomy
+
+  - name: asset
+    expr: assetnum
+    display_name: Asset
+    comment: Asset involved (TICKET.ASSETNUM). NULL for non-asset incidents (slips/trips/security/PSM).
+    synonyms:
+      - assetnum
+      - equipment
+      - involved asset
+
+  - name: location
+    expr: location
+    display_name: Location
+    comment: Where the incident occurred (TICKET.LOCATION). Composes with maximo-asset-hierarchy for region/area rollups.
+    synonyms:
+      - where
+      - place
+      - locationid
+
+  - name: reported_date
+    expr: reportdate
+    display_name: Reported Date
+    comment: When the incident was reported (TICKET.REPORTDATE). Stored in app-server timezone (overview gotcha 7).
+    synonyms:
+      - report date
+      - incident date
+      - when reported
+    format:
+      type: date
+      date_format: year_month_day
+      leading_zeros: true
+
+# ── Measures (lifted from metric_udfs.sql; defined once, slice by any field) ──
+measures:
+  - name: incident_count
+    expr: COUNT(1)
+    display_name: Incident Count
+    comment: >-
+      Count of incidents (TICKET CLASS='INCIDENT'). Mirrors the
+      incident_count_by_class Trusted UDF when grouped by incident_category.
+      Filtered to historyflag=0 by default — override at query time to include
+      closed incidents (overview gotcha 6).
+    synonyms:
+      - incidents
+      - number of incidents
+      - incident volume
+      - safety events
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: recordable_count
+    expr: COUNT_IF(incidentcategory IN ('RECORDABLE', 'LOST_TIME', 'DAYS_AWAY'))
+    display_name: Recordable Incident Count
+    comment: >-
+      Count of OSHA-recordable incidents using the stock literal category set
+      (RECORDABLE/LOST_TIME/DAYS_AWAY). Override at query time with the
+      deployment-specific recordable category set — there is no stock recordable
+      column (this skill's gotcha 5). Numerator for TRIR.
+    synonyms:
+      - osha recordable
+      - recordables
+      - osha recordable incidents
+      - rir numerator
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: lost_time_count
+    expr: COUNT_IF(incidentcategory IN ('LOST_TIME', 'DAYS_AWAY'))
+    display_name: Lost-Time Incident Count
+    comment: Count of lost-time incidents (subset of recordable). Override the category set per deployment. Numerator for LTIR. Mirrors the ltir Trusted UDF (numerator).
+    synonyms:
+      - lost time incidents
+      - lti count
+      - dart count
+      - lost workday cases
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: persons_involved
+    expr: SUM(persons_involved_count)
+    display_name: Persons Involved
+    comment: Total persons linked to incidents (plusgincperson, aggregated). PII-aggregated; no name detail exposed (this skill's gotcha — PII handling).
+    synonyms:
+      - people involved
+      - affected persons
+      - involved persons
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: injured_persons
+    expr: SUM(injured_persons_count)
+    display_name: Injured Persons Count
+    comment: Total injured persons (plusgincperson rows with non-null injurytype, aggregated). PII-aggregated.
+    synonyms:
+      - injuries
+      - injured count
+      - injury cases
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: open_incident_count
+    expr: COUNT_IF(status NOT IN ('CLOSED', 'RESOLVED'))
+    display_name: Open Incident Count
+    comment: >-
+      Incidents not yet closed or resolved. Status literals from the stock
+      INCIDENTSTATUS synonym set — resolve via SYNONYMDOMAIN when the
+      deployment has renamed synonyms (overview gotcha 5).
+    synonyms:
+      - open incidents
+      - active incidents
+      - unresolved incidents
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  # ── Composable rates — denominators (hours_worked) must come from HR/payroll,
+  # not Maximo (this skill's gotcha — TRIR/LTIR denominator). The constant
+  # 200000 = 100 full-time-equivalents × 2000 hours/yr (OSHA standard).
+  - name: recordable_per_100k_count
+    expr: MEASURE(recordable_count) * 200000.0
+    display_name: Recordable × 200,000 (TRIR numerator)
+    comment: >-
+      TRIR numerator (recordable count scaled by the OSHA 200,000 constant).
+      Mirrors the trir Trusted UDF numerator. Compose with an HR-sourced
+      hours_worked denominator for the full TRIR — the denominator is not a
+      Maximo number and must be supplied per period from payroll.
+    synonyms:
+      - trir numerator
+      - osha rate numerator
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: lost_time_per_100k_count
+    expr: MEASURE(lost_time_count) * 200000.0
+    display_name: Lost-Time × 200,000 (LTIR numerator)
+    comment: LTIR numerator. Mirrors the ltir Trusted UDF numerator. Combine with HR hours_worked.
+    synonyms:
+      - ltir numerator
+      - dart rate numerator
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: pct_recordable
+    expr: MEASURE(recordable_count) / MEASURE(incident_count)
+    display_name: Percent Recordable
+    comment: Composable — share of incidents that are recordable. Useful as a leading indicator alongside TRIR.
+    synonyms:
+      - recordable rate
+      - percent osha recordable
+    format:
+      type: percentage
+      decimal_places:
+        type: exact
+        places: 1
