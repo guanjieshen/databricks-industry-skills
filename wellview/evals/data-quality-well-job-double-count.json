@@ -1,0 +1,19 @@
+{
+  "name": "data-quality-well-job-double-count",
+  "description": "Validates that wellview-data-quality diagnoses well/job double-counting and the IDWELL join error.",
+  "query": "My total cost for this well looks about double what the daily report shows. Why?",
+  "expected_skill": "wellview-data-quality",
+  "expected_behavior": [
+    "loads wellview-data-quality (with wellview-overview as parent)",
+    "surfaces the reference value + scope questions (what the user expects, which well/window)",
+    "checks whether the roll-up grouped by WVJOB.IDREC (a well has many jobs) — the top cause of doubling",
+    "checks whether the record tree was joined on IDWELL instead of IDRECPARENT = parent.IDREC",
+    "checks for shared-AFE over-allocation",
+    "hands off the corrected per-job query to wellview-daily-ops-cost"
+  ],
+  "anti_behavior": [
+    "must NOT suggest re-ingestion as the first remedy",
+    "must NOT fix the query without identifying the cause",
+    "must NOT assume a single job per well"
+  ]
+}

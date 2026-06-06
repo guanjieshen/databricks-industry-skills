@@ -1,0 +1,19 @@
+{
+  "name": "daily-ops-cost-npt-definition-clarification",
+  "description": "Validates that wellview-daily-ops-cost surfaces the NPT-definition clarifying question instead of guessing.",
+  "query": "How much NPT did we have on the last well?",
+  "expected_skill": "wellview-daily-ops-cost",
+  "expected_behavior": [
+    "loads wellview-daily-ops-cost (with wellview-overview as parent)",
+    "before answering, surfaces the NPT-definition question: productive-flag vs LVWVCODENPT, and whether planned downtime (BOP tests, rig moves, waiting on weather) counts",
+    "confirms which job is 'the last well' (latest drilling job; a well has many jobs)",
+    "computes NPT% = NPT hours / total activity hours via wellview_npt_pct (or v_time_log_enriched)",
+    "decodes NPT reason via LVWVCODENPT rather than raw codes"
+  ],
+  "anti_behavior": [
+    "must NOT answer with a hard-coded NPT definition without surfacing it",
+    "must NOT roll up across all jobs on the well without grouping by WVJOB.IDREC",
+    "must NOT join the record tree on IDWELL instead of IDRECPARENT = parent.IDREC",
+    "must NOT report raw NPT codes without LV decode"
+  ]
+}

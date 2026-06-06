@@ -1,0 +1,19 @@
+{
+  "name": "daily-ops-cost-cost-per-foot-scope",
+  "description": "Validates that cost-per-foot surfaces scope ambiguity and normalizes units before dividing.",
+  "query": "What's our cost per foot on the last 5 wells?",
+  "expected_skill": "wellview-daily-ops-cost",
+  "expected_behavior": [
+    "loads wellview-daily-ops-cost",
+    "surfaces scope questions: which interval (section / job / well), which cost codes (all-in vs intangibles-only vs rig-spread), per job or per well",
+    "confirms the master unit of depth/footage and the cost currency before dividing (uses wellview_ft_to_m / the normalized Gold views)",
+    "computes cost per foot per JOB via wellview_cost_per_foot, filtered to drilling jobs",
+    "ranks the last 5 drilling jobs"
+  ],
+  "anti_behavior": [
+    "must NOT divide cost by footage without confirming the master unit (the ~3.28x silent error)",
+    "must NOT sum cost across the well without grouping by job",
+    "must NOT include a shared AFE's cost twice (many-to-many allocation)",
+    "must NOT silently pick a cost-code scope"
+  ]
+}

@@ -1,0 +1,96 @@
+# =============================================================================
+# WellView Daily Ops & Cost — Metric View (semantic layer)
+# =============================================================================
+# The governed semantic layer Genie Agents, AI/BI dashboards, and BI tools query
+# for daily-ops/cost metrics. Canonical measures are defined ONCE here and
+# sliceable by the dimensions below. The agent metadata (display_name / comment /
+# format / synonyms) is what lets Genie discover and correctly use each measure
+# from natural language — synonyms carry the real drilling/cost vocabulary
+# ("cost per foot", "NPT", "over AFE", "days vs depth").
+#
+# Source-specific content lives here; CREATE / register / refresh mechanics are
+# the platform skill's job — load `databricks-metric-views`. Registration is owned
+# by wellview-setup (preview-then-apply), not run from this skill.
+#   https://docs.databricks.com/aws/en/business-semantics/metric-views/
+#   https://docs.databricks.com/aws/en/business-semantics/agent-metadata
+#
+# GRAIN: one row per report-day per job. `v_daily_ops_cost_fact` is a gold fact
+# wellview-data-engineering materializes by aggregating the time-log (footage, NPT
+# hours, total hours) and cost (daily cost) children up to the daily-report grain,
+# already MASTER-UNIT-normalized (metres) and per-job (no well-level double count).
+#
+# Bind at registration: :catalog, :silver_schema, :gold_schema. Requires DBR 17.3+.
+#   CREATE VIEW :catalog.:gold_schema.wellview_daily_ops_metrics
+#     WITH METRICS LANGUAGE YAML AS $$ <body> $$;
+# =============================================================================
+
+version: 1.1
+source: :catalog.:gold_schema.v_daily_ops_cost_fact
+comment: Canonical WellView daily-ops & cost metrics, sliceable by well, job, job type, rig, and date. Footage/depth in metres; confirm cost currency in the glossary.
+
+dimensions:
+  - name: Well
+    expr: well_name
+    synonyms: [well, well name, wellbore]
+  - name: Job Type
+    expr: job_type
+    synonyms: [job, operation type, drilling vs workover]
+  - name: Rig
+    expr: rig_name
+    synonyms: [rig, drilling rig]
+  - name: Report Date
+    expr: report_date
+    synonyms: [date, day, operational day]
+  - name: Days From Spud
+    expr: days_from_spud
+    synonyms: [days vs depth, days on well, day number]
+
+measures:
+  - name: Total Cost
+    expr: SUM(daily_cost)
+    display_name: Total Cost
+    comment: Sum of daily cost lines, rolled to the selected grain. Confirm cost-code scope and currency.
+    format: { type: currency }
+    synonyms: [cost, spend, total spend, well cost]
+
+  - name: Total Footage (m)
+    expr: SUM(footage_m)
+    display_name: Total Footage
+    comment: Footage drilled, normalized to metres.
+    format: { type: number, decimal_places: { min: 0, max: 1 } }
+    synonyms: [footage, metres drilled, feet drilled, interval]
+
+  - name: Cost per Foot
+    expr: SUM(daily_cost) / NULLIF(SUM(footage_m), 0)
+    display_name: Cost per Metre
+    comment: Total cost / total footage at the selected grain. The canonical drilling-cost efficiency metric.
+    format: { type: currency }
+    synonyms: [cost per foot, cost per metre, $/ft, drilling cost efficiency, CPF]
+
+  - name: NPT Hours
+    expr: SUM(npt_hours)
+    display_name: NPT Hours
+    comment: Non-productive time in hours. NPT classification per the customer's confirmed rule.
+    format: { type: number, decimal_places: { min: 0, max: 1 } }
+    synonyms: [non-productive time, downtime, lost time, NPT]
+
+  - name: NPT %
+    expr: SUM(npt_hours) / NULLIF(SUM(total_hours), 0)
+    display_name: NPT Percent
+    comment: NPT hours / total activity hours. Surface the NPT definition to the user before relying on this.
+    format: { type: percentage }
+    synonyms: [npt percent, percent downtime, non-productive time percentage]
+
+  - name: Avg ROP (m/hr)
+    expr: SUM(footage_m) / NULLIF(SUM(on_bottom_hours), 0)
+    display_name: Average ROP
+    comment: Footage / on-bottom hours. Rate of penetration; exclude NPT hours from the denominator.
+    format: { type: number, decimal_places: { min: 0, max: 1 } }
+    synonyms: [ROP, rate of penetration, drilling speed]
+
+  - name: Days on Well
+    expr: MAX(days_from_spud)
+    display_name: Days on Well
+    comment: Elapsed days from spud at the selected grain. Anchor (spud vs job-start) is set in the fact.
+    format: { type: number, decimal_places: { min: 0, max: 1 } }
+    synonyms: [days, duration, days on well, days from spud]

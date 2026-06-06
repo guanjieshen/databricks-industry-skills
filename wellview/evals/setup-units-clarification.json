@@ -1,0 +1,18 @@
+{
+  "name": "setup-units-clarification",
+  "description": "Validates that wellview-setup records the master unit of every numeric column and never applies UC comments without approval.",
+  "query": "Set up WellView for Genie in our workspace.",
+  "expected_skill": "wellview-setup",
+  "expected_behavior": [
+    "loads wellview-setup (with wellview-overview as parent)",
+    "introspects the WV/LV/SYS schema read-only first (does not enumerate by hand)",
+    "surfaces the master-unit question for depth/footage (feet vs metres) and cost currency, sourced from SYSUNIT",
+    "generates the <customer>-wellview-glossary skill with units, LV decodes, and the open-job convention",
+    "previews UC comments and waits for explicit approval before any --apply"
+  ],
+  "anti_behavior": [
+    "must NOT apply UC comments without an explicit 'yes apply' (acknowledgments like 'looks good' are not approval)",
+    "must NOT finalize a unit from sample values alone",
+    "must NOT assume all 200-300 tables or all modules are in use"
+  ]
+}

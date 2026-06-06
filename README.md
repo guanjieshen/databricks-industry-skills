@@ -93,8 +93,11 @@ Currently shipped data-source families:
 
 | Family | Status | Industries primarily served |
 |---|---|---|
-| [`maximo/`](./maximo/) | v2 in progress | Oil & gas, utilities, mining, manufacturing, federal |
-| [`pods/`](./pods/) | v1 (foundation + ILI flagship) | Midstream oil & gas (pipeline integrity) |
+| [`maximo/`](./maximo/) | Beta | Oil & gas, utilities, mining, manufacturing, federal |
+| [`pods/`](./pods/) | WIP, not ready for use | Midstream oil & gas (pipeline integrity) |
+| [`wellview/`](./wellview/) | WIP, not ready for use | Upstream oil & gas (drilling, completions, workovers, daily ops/cost) |
+
+Only `maximo/` is at Beta and ready to try. `pods/` and `wellview/` are works in progress, so don't rely on them yet.
 
 Planned future families (see `_template/`):
 
