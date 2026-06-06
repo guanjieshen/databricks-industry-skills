@@ -56,6 +56,35 @@ The IT DE today gets a task ("build a work-order-optimization dashboard"), doesn
 
 Time from business request → production data product. **Length is a tax on the IT DE's clock.** Anything correct-but-slow-to-consume — long preambles, generic Databricks content, deep cross-references — defeats the value prop.
 
+## Workspace layout (the one rule every skill obeys)
+
+Every skill — shipped, generated, or customer-modified — lives as a **direct child of `.assistant/skills/`**, flat. Not nested under a family folder. Not in a subdirectory. Direct child.
+
+```
+✅ /Users/<email>/.assistant/skills/maximo-overview/SKILL.md
+✅ /Users/<email>/.assistant/skills/maximo-work-orders/SKILL.md
+✅ /Users/<email>/.assistant/skills/<customer>-maximo-glossary/SKILL.md
+❌ /Users/<email>/.assistant/skills/maximo/maximo-overview/SKILL.md     ← nested; not discovered
+❌ /Users/<email>/.assistant/skills/maximo/<customer>-maximo-glossary/  ← nested; not discovered
+```
+
+**Why**: Genie Code's auto-discovery does not reliably recurse into subfolders. A nested skill loads **only** when explicitly referenced by path (e.g. via user instructions or `@mention`) — never by description match. The whole "Genie selects skills by matching descriptions" loop fails for nested skills.
+
+**Operational implications**:
+- **Repo layout** stays grouped under `<source>/` folders for organization (`maximo/maximo-work-orders/`, `sap-pm/sap-pm-notifications/`, etc.) — that's a developer-side convention.
+- **Install instructions** must flatten when pushing to a workspace. The shipped `databricks workspace import-dir <source>/ <skills-root>/` pattern in family READMEs is wrong — it creates the nested structure. **Use per-skill import to flatten**:
+  ```bash
+  for skill in <source>/*/; do
+    name=$(basename "$skill")
+    databricks workspace import-dir "$skill" "<skills-root>/$name" --overwrite
+  done
+  ```
+- **`-setup` skills must generate their glossary output flat** — at `<skills-root>/<customer>-<source>-glossary/`, NOT at `<skills-root>/<source>/<customer>-<source>-glossary/`.
+
+### Genie's auto-discovery cap
+
+Genie Code's skill-matching loop has a soft cap on how many skill descriptions it evaluates per session. In workspaces with many installed skills (>20-ish), discovery may miss legitimate matches even when descriptions are perfect. The mitigation is a **deterministic skill-loading routing block in user instructions** (covered in *Phase 5* of `## Building a -setup skill` below) — for any source family, the `-setup` skill should offer to write that routing block as an opt-in vetted phase, so Genie has a reliable fallback when auto-discovery is rate-limited.
+
 ## The three commitments
 
 ### 1. Layer placement
@@ -133,9 +162,12 @@ For Maximo: SITEID composite keys, `WOCLASS` filtering, `ISTASK` tasks-vs-child-
 | **0 — Profile** | Read-only inspection of the customer's data. Python preferred (`introspect_schema.py`); SQL fallback (`profile_queries.sql`) for warehouse-only sessions. Output: `draft_profile.json` + `activity_report.md` | ✅ |
 | **0.5 — Read default Genie Code instructions** | If the workspace has default Genie Code instructions, parse for any pre-documented facts (catalog, timezone, currency, jargon) and skip the corresponding interview questions | ✅ |
 | **1 — Interview** | Adaptive, conversational gap-confirmation grounded in the profile. Captures `answers.json` | ✅ |
-| **2 — Generate glossary** | Render `<customer>-<source>-glossary/SKILL.md` from `answers.json`. Co-located with `answers.json`, `draft_profile.json`, `activity_report.md`, and timestamped `history/` snapshots | ✅ |
+| **2 — Generate glossary** | Render `<customer>-<source>-glossary/SKILL.md` from `answers.json`. **Output at FLAT `<skills-root>/<customer>-<source>-glossary/`** — not nested under `<skills-root>/<source>/`. Co-located with `answers.json`, `draft_profile.json`, `activity_report.md`, and timestamped `history/` snapshots | ✅ |
 | **3 — UC comment registration** | Modifies customer-owned UC objects | ❌ **Opt-in only**, multi-checkpoint vetted (see below) |
-| **4 — Write summary to default Genie Code instructions** | Modifies customer-owned workspace config | ❌ **Opt-in only**, same vetted flow as Phase 3 |
+| **4 — Write customer-facts summary to default Genie Code instructions** | Modifies customer-owned workspace config | ❌ **Opt-in only**, same vetted flow as Phase 3 |
+| **5 — Write skill-loading routing block to user instructions** | Modifies user-owned workspace config. Highest-value follow-up after the glossary itself because Genie's auto-discovery cap may otherwise cause downstream module skills to silently not load | ❌ **Opt-in only**, same vetted flow as Phase 3 |
+
+Phases 3/4/5 share the same **4-checkpoint vetted flow**: preview → unambiguous approval → customer executes (the skill never auto-applies) → post-apply verification. Surface them as opt-in next steps in the closing summary; never auto-advance to any of them. The setup skill's job is to make them visible as available actions, not to execute them.
 
 ### 4-verdict module activity detection
 
@@ -186,16 +218,18 @@ Six design principles (apply universally):
 
 ### Persistent artifact layout
 
-All setup state lives inside the customer's glossary skill folder — git-trackable, multi-customer-scoped, enterprise-fork-compatible:
+All setup state lives inside the customer's glossary skill folder — git-trackable, multi-customer-scoped, enterprise-fork-compatible. **Layout is FLAT at the skills root** (see *Workspace layout* above):
 
 ```
-<skills-root>/<source>/<customer>-<source>-glossary/
+<skills-root>/<customer>-<source>-glossary/         ← flat, direct child of .assistant/skills/
 ├── SKILL.md                ← Genie-loaded glossary (rendered view)
 ├── answers.json            ← structured source of truth
 ├── draft_profile.json      ← most-recent Phase 0 profile
 ├── activity_report.md      ← most-recent Module Activity Heatmap
 └── history/                ← timestamped snapshots; --no-history disables
 ```
+
+NOT `<skills-root>/<source>/<customer>-<source>-glossary/` — nesting under a source-folder breaks Genie's auto-discovery (see *Workspace layout* above for the why).
 
 Re-runs load `answers.json` directly (not parse rendered markdown). Customer-managed enterprise GitHub forks can `.gitignore` ephemeral artifacts and rely on git history; the framework's `--no-history` flag supports this cleanly.
 
@@ -224,6 +258,105 @@ Two SQL mechanisms ship for Phase 3:
 | Persistent artifact layout | The folder name (`<customer>-<source>-glossary/`) varies | Everything else (file names, history pattern, gitignore template) is identical |
 
 The framework above is portable. When forking the `_template/example-setup/` for a new source, fill in the source-specific map but keep the pattern intact.
+
+## Building a `-genie-agent` skill (the Genie Space scaffolder pattern)
+
+A `-genie-agent` skill (formerly `-genie-space`) helps Genie Code stand up a curated **Genie Agent** for a source. The Agent has multiple text + config surfaces; the skill's job is to teach Genie *what content goes on which surface*.
+
+### The six Genie Space surfaces
+
+| Surface | What goes there | Use heavily? |
+|---|---|---|
+| **Description** (1-2 sentences, user-facing) | What the Space is for, who picks it. Visible in the Space picker. | No — keep ≤30 words |
+| **Instructions** (agent behavior block) | Persona + semantic rules + judgment + KPI definitions + tribal knowledge + scope/boundaries + defer-to-user logic | **Yes** — substantial when there's substantial content |
+| **Example SQL** (query patterns) | Filter/dedup/status-resolution patterns Genie learns by example | **Yes** — the pattern-teaching surface |
+| **Joins configuration** (declarative relationships) | Composite-key joins between source tables | **Yes** — Genie respects declared joins automatically |
+| **Trusted Assets** (UC SQL functions) | Governed metric definitions Genie calls via `MEASURE()` / function call | **Yes** — every certified metric in the family |
+| **Business synonyms** (vocabulary mappings) | Customer business terms → physical schema | **Yes** — from the `-setup` glossary |
+
+(UC table/column comments are a seventh content surface, owned by the family's `-setup` skill; they live in UC metadata, not the Space.)
+
+### Match content to the right surface
+
+Each surface has a sweet spot. The anti-pattern is **putting content on the wrong surface** — not "long instructions" or "short instructions." Three live-tested misuses to watch for:
+
+1. **Behavior rules in the Description field.** Description is user-facing (in the Space picker); end users shouldn't see agent-behavior prose. Persona / rules go in **Instructions**. Skills must call out Description and Instructions as *distinct fields* with *distinct content*, with explicit templates for each.
+2. **Query patterns as imperative rules in Instructions.** *"Always filter `WOCLASS='WORKORDER'`"* is a query pattern — it belongs in an **Example SQL** entry (every example query shows the filter in its `WHERE` clause; Genie learns by pattern). Don't repeat it as prose.
+3. **Join logic in prose Instructions.** *"Always join on `SITEID`"* belongs in the **Joins configuration** — declared once, applied to every query. Don't describe joins in prose.
+
+What DOES belong in Instructions (and where authors should put *substantial* content):
+- **Persona opening** — *"You are an expert Maximo analyst focused on work-order operations. You care about backlog health, completion trends, labor utilization. You reason in the user's vocabulary…"* (FIRST section, always — without it the agent answers like a generic SQL bot)
+- **Semantic rules examples can't capture** — *"Datetimes are in app-server timezone (`America/Edmonton`). `CAP` work-type is capital, not maintenance — exclude from maintenance totals."*
+- **Customer-specific tribal knowledge** — *"Mainline integrity inspections are tracked as `WORKTYPE='INSP' AND wo_reg_flag='Y'` — both flags needed."*
+- **KPI definitions** specific to the customer (when not already in Trusted UDFs)
+- **Judgment guidance / "when in doubt"** — *"For cost questions, check `wo_currencycode` — convert to base currency before aggregating."*
+- **Scope and boundaries** — *"You answer questions about work orders + labor + HSE permits. For cost methodology, defer."*
+
+### Description vs Instructions — keep them separate
+
+The single most common live-test misuse: Genie dumping behavior rules into the Description field. The `-genie-agent` skill MUST make this distinction explicit. Two separate steps in the workflow, two separate templates:
+
+**Description template** (1-2 sentences, ≤30 words, no behavior rules):
+```
+<Customer>'s Maximo <domain> agent. Ask natural-language questions
+about <in-scope topics> for <customer-specific scope>.
+```
+
+**Instructions template** (Part A persona + Part B semantic rules + Part C defer-to-user):
+```
+You are an expert <source> analyst focused on <domain>. You have a deep
+understanding of <key entities and the customer's deployment>. You care
+about <outcomes>. You reason in the user's vocabulary (<customer terms>).
+
+You prefer governed answers: when a Trusted UDF or metric_view measure
+exists, call it (MEASURE(<measure>)) rather than reinventing inline.
+When you don't know the customer's convention, ASK before guessing.
+
+[semantic rules — timezone, custom-status meanings, customer-specific
+behavior logic, tribal knowledge, scope/boundaries]
+
+[defer-to-user list — for questions about <X>, ask the user before
+answering; the customer's convention is still unconfirmed]
+```
+
+### Benchmark — load INTO the Space, not external
+
+The `-genie-agent` skill ships a `benchmark.md` (starter questions). During curation, those questions must be **loaded into the Genie Space's Benchmark tab**, not kept as an external doc you grade by hand. Reasons:
+- The Space carries its own validation set (regressions visible across versions).
+- Monitoring-tab questions promote in with one click.
+- Anyone can re-run the benchmark from the Space.
+
+Coverage target per the canonical pattern:
+- ≥3 questions per in-scope module (count + breakdown + time-windowed)
+- ≥2 ambiguity-resolution questions (the Agent should ask back, not guess)
+- ≥2 cross-module / hierarchical questions (exercise Joins config + glossary)
+
+### Benchmark fix order — match the fix to the miss
+
+When the Space misses a question, *diagnose* before fixing. Each miss type fixes on a different surface:
+
+| Miss shape | Fix surface |
+|---|---|
+| Wrong column meaning | UC comment (via `-setup`) |
+| Wrong join (missing composite key) | Joins configuration |
+| Reinvented a metric inline | Trusted Asset / metric_view (add the function; fix the `MEASURE()` reference) |
+| Missed a query pattern | Example SQL (add or repair an example) |
+| Missed a vocabulary mapping | Business synonyms |
+| Generic-SQL-bot answer (no SME mindset) | Instructions Part A (persona) |
+| Wrong semantic interpretation (timezone, scope rule) | Instructions Part B |
+| Should have asked the user but didn't | Instructions Part C (defer-to-user) |
+
+No "instructions first" or "instructions last." Each surface is first for its kind of miss.
+
+### Cross-source adaptation
+
+The six-surface pattern is universal. The source-specific content per surface varies:
+- **Persona** is per-source / per-customer-persona (a Maximo planner ≠ a Salesforce SDR)
+- **Joins configuration** is per-source-schema (Maximo's composite `SITEID` keys ≠ Salesforce's `AccountId` lookups)
+- **Trusted UDFs** are per-source-and-module (MTBF for Maximo reliability ≠ pipeline conversion rate for Salesforce)
+- **Benchmark questions** are per-customer-business (the customer's real questions are what matters; the shipped starter is just a seed)
+
+When forking `_template/example-genie-agent/` for a new source, fill in the source-specific content but keep the six-surface pattern, the persona-first opening, and the Description-vs-Instructions distinction intact.
 
 ## Quick start: a new module skill end-to-end
 
@@ -347,6 +480,9 @@ Add `<source>/evals/*.json` with `query` → `expected_behavior` cases. Run in a
 - **Don't re-teach what Genie Code already does** (Lakeflow, ML, dashboards, UC, lineage, MLflow, observability). Reference [`ai-dev-kit/databricks-skills/`](https://github.com/databricks-solutions/ai-dev-kit/tree/main/databricks-skills); don't duplicate.
 - **Don't couple to feature mechanics** (current API field names, UI screens, today's registration workflow). Author to the concept, not the surface.
 - **Never modify existing tables/data/metadata without explicit user permission.** Preview first; gate on `--apply`; ask. See *Repo rule* above.
+- **Never autonomously write to user / workspace instructions** (`.assistant_instructions.md`, default Genie Code workspace instructions). These are customer-owned config; writes go through the same 4-checkpoint vetted flow as UC writes (preview → unambiguous approval → customer applies themselves → post-apply verification). The `-setup` skill's Phase 4 (customer-facts summary) and Phase 5 (skill-loading routing block) cover this when the customer opts in. **Live-tested failure mode:** Genie Code is willing to autonomously edit these files during a skill's workflow if the skill doesn't explicitly forbid it. Every skill that touches workspace config must call this out in its own `## What NOT to do`.
+- **Never install skills nested under a family folder in a workspace.** Repo layout under `<source>/` is a developer convention; workspace install must flatten to `.assistant/skills/<skill-name>/` direct children. Nested skills don't auto-discover. See *Workspace layout* above.
+- **Never put behavior rules in a Genie Space's Description field.** Description is user-facing (Space picker) — 1-2 sentences, what the Space is for. Behavior rules go in the Instructions field. See *Building a `-genie-agent` skill* above for templates.
 - Don't include time-sensitive text ("after August 2025…"). Use an "old patterns" note instead.
 - Don't author outcome-driven content ("analyze contractor performance") in `<source>-*` skills — that's top-layer and lives elsewhere.
 

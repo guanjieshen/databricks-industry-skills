@@ -92,13 +92,20 @@ Be precise: **Genie Code** is the agent harness; **Genie Spaces** is a text-to-S
 - [ ] CLI examples rely on ambient in-workspace auth (no `--profile`; that's local-only)
 - [ ] MCP tools, if any, are fully qualified (`ServerName:tool_name`)
 
-## Safety — writes to existing objects
+## Safety — writes to existing objects + workspace config
 - [ ] No write to existing tables/data/metadata happens as a side effect
 - [ ] Writing scripts default to preview (no-op) and require an explicit `--apply`-style flag
 - [ ] The skill shows the preview/diff and asks for explicit user approval before applying
+- [ ] **No autonomous writes to user `.assistant_instructions.md` or workspace default Genie Code instructions.** Same 4-checkpoint vetted flow as UC writes (preview → unambiguous approval → customer applies themselves → post-apply verification). Live-tested failure mode: Genie will do this autonomously unless the skill explicitly forbids it.
 - [ ] **For `-setup` skills**: UC comment registration is in an `## Optional` section, NEVER offered spontaneously
-- [ ] **For `-setup` skills**: ambiguous customer responses ("okay" / "looks good") MUST NOT be interpreted as approval to apply UC writes — require unambiguous affirmation
+- [ ] **For `-setup` skills**: ambiguous customer responses ("okay" / "looks good" / "sounds fine") MUST NOT be interpreted as approval to apply UC writes — require unambiguous affirmation ("yes apply", "go ahead and apply")
 - [ ] **For `-setup` skills**: default Genie Code workspace instructions are READ only in Pre-flight (to skip already-documented questions); writing to them is a separate opt-in flow with the same vetting as UC comments
+- [ ] **For `-setup` skills**: skill-loading routing block (Phase 5) is offered in the closing summary as a HIGH-VALUE opt-in next step (without it, Genie's auto-discovery cap may cause downstream module skills to silently not load)
+
+## Workspace layout
+- [ ] Skills install **FLAT** at `.assistant/skills/<skill-name>/` direct children — NEVER nested under a `<source>/` parent folder in the workspace (repo layout under `<source>/` is fine; install must flatten)
+- [ ] **For `-setup` skills**: the generated `<customer>-<source>-glossary/` output lands flat at `<skills-root>/<customer>-<source>-glossary/`, NOT nested under `<skills-root>/<source>/<customer>-<source>-glossary/`
+- [ ] Family README install command flattens (uses a per-skill loop, not a single `import-dir` of the whole `<source>/` directory)
 
 ## `-setup` skills — additional checklist
 
@@ -121,6 +128,19 @@ Be precise: **Genie Code** is the agent harness; **Genie Spaces** is a text-to-S
 - [ ] Phase 3 has both Python and SQL paths: `apply_uc_comments.py --emit-sql` generates + a committed `apply_uc_comments.sql` artifact ships
 - [ ] If the skill also writes to default Genie Code instructions, that's an `## Optional` section with the same 4-checkpoint vetting
 - [ ] At least 4 evals: Expert path / Limited-or-None path / data-signal trigger fired (e.g. multi-currency) / mostly-skip path
+
+## `-genie-agent` skills — additional checklist
+
+(Applies only to `<source>-genie-agent` skills — the Genie Space scaffolder pattern.)
+
+- [ ] Skill defines content for **all six Genie Space surfaces**: Description, Instructions, Example SQL, Joins configuration, Trusted Assets, Business synonyms
+- [ ] **Description vs Instructions are explicit, distinct steps** in the workflow with separate templates. Description = 1–2 sentences, ≤30 words, user-facing (Space picker). Instructions = persona + semantic rules + judgment block.
+- [ ] Instructions specify a **Persona opening (Part A) FIRST, before any semantic rule**. Without it, Genie answers like a generic SQL bot.
+- [ ] Instructions guidance follows **"match content to surface"**, not "instructions small": substantial instructions are correct when the content is persona / semantic rules / KPI definitions / tribal knowledge / scope / defer-to-user logic. The anti-pattern is imperative rules examples already teach (those go in Example SQL), not "long instructions."
+- [ ] **Joins configuration** is declarative — composite-key joins are registered in the Joins config, not described in prose Instructions
+- [ ] **`benchmark.md` is loaded INTO the Space's Benchmark tab**, not just referenced as an external file. Coverage targets met: ≥3 questions per in-scope module (count + breakdown + time-windowed); ≥2 ambiguity-resolution questions; ≥2 cross-module / hierarchical questions
+- [ ] Benchmark fix order is documented as **match-fix-to-miss** (per surface), not "instructions first" or "instructions last"
+- [ ] Skill defers Genie Agent creation mechanics to the platform skill [`databricks-genie`](https://github.com/databricks-solutions/ai-dev-kit/blob/main/databricks-skills/databricks-genie/SKILL.md) (this skill provides only source-specific content; not API/UI walkthroughs)
 
 ## Evals & verification
 - [ ] ≥3 eval cases added under `<source>/evals/`
