@@ -1,0 +1,10 @@
+{
+  "query": "how much did we spend on purchase orders last quarter?",
+  "expected_skill": "maximo-procurement",
+  "expected_behavior": [
+    "Loads maximo-procurement with maximo-overview as parent",
+    "Surfaces the cost-basis ambiguity before answering: LINECOST (pretax) vs LOADEDCOST (incl. freight) vs TOTALCOST, and whether tax (TAX1-5) is included",
+    "Surfaces the date ambiguity: PO order date vs receipt date vs invoice date",
+    "Notes the canonical cost field is governed by the RECEIPLINEORLOADED MAXVAR (a maximo-setup deployment fact), and does not silently pick one"
+  ]
+}

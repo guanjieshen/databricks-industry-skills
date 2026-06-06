@@ -82,9 +82,9 @@ Tables Genie should know exist, organized by Maximo module:
 - `FAILURECODE` — failure taxonomy (tree: PROBLEM → CAUSE → REMEDY)
 
 ### Inventory / Purchasing
-- `INVENTORY`, `INVBALANCES`, `INVUSE`
-- `PO`, `POLINE`, `INVOICE`, `INVOICELINE`
-- `COMPANIES`
+- `INVENTORY`, `INVBALANCES`, `INVUSE` — stock (owned by `maximo-inventory`)
+- `PR`, `PRLINE`, `PO`, `POLINE`, `INVOICE`, `INVOICELINE`, `MATRECTRANS`, `SERVRECTRANS` — procurement (owned by `maximo-procurement`)
+- `COMPANIES` / `COMPMASTER` — vendor master (see `maximo-procurement`)
 
 ### Resources (Labor)
 - `LABOR` — labor master (`LABORCODE` → person + craft + default rate)
@@ -167,6 +167,7 @@ Depth lives in the sibling skills. The overview's job is to route — when the u
 - [`maximo-reliability`](../maximo-reliability/) — reliability metrics (backward-looking): MTBF, MTTR, PM compliance, failure-mode analysis. Ships Trusted UDFs matching IBM's published O&G formulas.
 - [`maximo-pm-planning`](../maximo-pm-planning/) — PM planning (forward-looking): PM forecasting, craft workload, JOBPLAN content, route grouping. Companion to `maximo-reliability`.
 - [`maximo-inventory`](../maximo-inventory/) — INVENTORY, INVBALANCES, ITEM, storeroom analytics: reorder, stockout, ABC, parts availability for WOs.
+- [`maximo-procurement`](../maximo-procurement/) — purchasing: PR/PO/INVOICE + receipts (MATRECTRANS/SERVRECTRANS) + vendor master (COMPANIES). Open PO backlog, vendor spend, PO cycle time, three-way match, on-time delivery. Approval routing → `maximo-workflow-and-approvals`; cost-to-asset/currency → `maximo-maintenance-cost`.
 - [`maximo-maintenance-cost`](../maximo-maintenance-cost/) — cost rollups by asset / location / period: ACTLABCOST + ACTMATCOST, budget vs actual, PM-vs-CM cost, contractor spend.
 - [`maximo-labor-resources`](../maximo-labor-resources/) — labor masters (LABOR, PERSON, CRAFT, LABORCRAFTRATE), qualifications (QUALIFICATION, QUALPERSON), crews (CREW, CREWLABOR), calendars (CALENDAR, WORKPERIOD), assignments (ASSIGNMENT). Composes with `maximo-pm-planning` for workload-vs-capacity gap analytics.
 - [`maximo-asset-hierarchy`](../maximo-asset-hierarchy/) — closure tables (LOCHIERARCHY, LOCANCESTOR, ASSETANCESTOR), classification trees (CLASSSTRUCTURE), virtual hierarchies (SYSTEM), and rollups by region / station / area / system / asset class. Composes with most module skills for hierarchical analytics.

@@ -145,7 +145,7 @@ These can differ materially when:
 - Standard cost is significantly out-of-date
 - Returns are valued at a different cost than the original issue
 
-For "what we paid" analytics, use the procurement skill (planned v5). For "what we consumed at standard/avg cost", use this skill.
+For "what we paid" analytics, use `maximo-procurement` (PO/invoice/vendor). For "what we consumed at standard/avg cost", use this skill.
 
 ## 8. PM-generated vs preventive worktype — NOT the same
 
