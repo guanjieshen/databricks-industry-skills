@@ -141,15 +141,15 @@ Close with a clear recap of **what was created, where, and the value** — then 
 
 **What this already unlocks (no further steps required):** every other `maximo-*` skill now resolves the customer's sites, asset classes, open-status set, worktypes, customizations, and custom columns — so backlog/reliability/cost/PM questions are correct today.
 
-**Optional next steps — suggest, don't assume. Never auto-advance:**
+**Optional next steps — surface them at the end of setup as available options. Suggest, don't assume; never auto-execute:**
 - Ask Maximo questions now (the glossary already improves answers significantly) — usually the right immediate move.
-- **Optionally**, register UC table/column comments via the *Optional: UC comment registration* section. Run **only if the customer explicitly asks** — never offer as a default next step.
+- **Optionally**, write a **skill-loading routing block** to the user's `.assistant_instructions.md` via the *Optional: write a skill-loading routing block to user instructions* section below. This is the HIGHEST-VALUE follow-up after the glossary itself — without it, Genie's auto-discovery cap may cause downstream `maximo-*` module skills to silently not load, leaving Genie answering with only the glossary + inline SQL. Run **only if the customer explicitly approves** the preview.
+- **Optionally**, register UC table/column comments via the *Optional: UC comment registration* section. Run **only if the customer explicitly asks** — never offer as a default next step beyond surfacing it as an available option here.
+- **Optionally**, write a customer-facts summary to default Genie Code workspace instructions via the *Optional: write a summary to default Genie Code instructions* section. Run **only if the customer explicitly approves**.
 - **Optionally**, build a curated **Genie Space** with `maximo-genie-space` *if the user wants a shareable NL surface*. Offer it; don't start it automatically.
 - Follow up on the flagged `_unknown_` items with the right owners (reliability / integrity / compliance / planners).
 
-> Do **not** auto-advance to Genie Space creation. Setup stands on its own; only build the Space when the user asks.
->
-> Do **not** auto-advance to UC comment registration either. UC writes modify customer-owned tables and only run on explicit user request through the vetted flow below.
+> **Surface these to the user when setup completes** — they should see "here are the optional next steps you can take" so they know the routing block and the other opt-ins exist. **Do not auto-execute any of them.** Each requires an explicit user request + the vetted preview-then-apply flow per the corresponding `## Optional` section below.
 
 ## Optional: UC comment registration (opt-in only, multi-checkpoint vetted)
 
