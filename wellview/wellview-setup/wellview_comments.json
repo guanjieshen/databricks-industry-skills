@@ -1,0 +1,63 @@
+{
+  "_note": "Canonical UC comment content for WellView Silver tables. The MASTER UNIT of each numeric column lives in its column comment so Genie sees it on DESCRIBE. Resolve physical names + confirm units per customer before applying. Bind :catalog.:silver_schema. Apply ONLY via apply_uc_comments.py --apply, gated on explicit approval.",
+  "tables": {
+    "WVWELLHEADER": {
+      "comment": "WellView well master. One row per well. IDREC = IDWELL (the well-level GUID carried on every descendant row).",
+      "columns": {
+        "IDREC": "Primary key (GUID). Equals IDWELL at the well level.",
+        "IDWELL": "Well GUID; denormalized onto every descendant row. Use to FILTER to a well, not to relate rows.",
+        "WELLNAME": "Well name (business label).",
+        "WELLIDAPI": "API / UWI well identifier."
+      }
+    },
+    "WVJOB": {
+      "comment": "Job: a discrete operation campaign on a well (drilling, completion, workover, P&A). A well has MANY jobs — group cost/footage/days by IDREC before rolling to the well.",
+      "columns": {
+        "IDREC": "Primary key (GUID). The roll-up grain for daily-ops/cost.",
+        "IDRECPARENT": "FK to WVWELLHEADER.IDREC (the parent edge).",
+        "JOBTYPE": "Job type code; decode via LVWVTYPEJOB (Drilling/Completion/Workover/P&A).",
+        "DTTMSTART": "Job start datetime."
+      }
+    },
+    "WVJOBREPORT": {
+      "comment": "Daily operations report. One row per day per job. Child of WVJOB via IDRECPARENT.",
+      "columns": {
+        "IDREC": "Primary key (GUID). Parent of the time log and (per install) cost lines.",
+        "IDRECPARENT": "FK to WVJOB.IDREC.",
+        "DTTMSTART": "Report (operational) day.",
+        "DEPTHMD": "Measured depth at 24:00. MASTER UNIT: <feet|metres> — CONFIRM via SYSUNIT.",
+        "DAYSFROMSPUD": "Days since spud. May be a calc-engine output (not stored) — recompute if NULL."
+      }
+    },
+    "WVJOBREPORTOP": {
+      "comment": "Operations time log. One row per activity within a report-day. Child of WVJOBREPORT via IDRECPARENT. Hours should reconcile to ~24/day.",
+      "columns": {
+        "IDRECPARENT": "FK to WVJOBREPORT.IDREC.",
+        "HRS": "Activity duration in hours.",
+        "PHASE": "Hole section / phase code; decode via LVWVPHASE.",
+        "CODEOP": "Operation code; decode via LVWVCODEOP.",
+        "CODENPT": "NPT reason code; decode via LVWVCODENPT. NPT rule is customer-specific.",
+        "DEPTHSTART": "Depth at activity start. MASTER UNIT: <feet|metres> — CONFIRM.",
+        "DEPTHEND": "Depth at activity end. Footage = DEPTHEND - DEPTHSTART (same unit)."
+      }
+    },
+    "WVCOST": {
+      "comment": "Cost lines. Parentage is report or job per install — CONFIRM. Roll up by job (WVJOB.IDREC).",
+      "columns": {
+        "IDRECPARENT": "FK to WVJOBREPORT.IDREC or WVJOB.IDREC — CONFIRM per install.",
+        "CODECOST": "Cost code; decode + rollup via LVWVCODECOST.",
+        "AMOUNT": "Cost amount. MASTER UNIT: currency = <CCY> — CONFIRM. Don't sum across currencies.",
+        "AFENUM": "AFE reference; match to WVAFE.AFENUM."
+      }
+    },
+    "WVAFE": {
+      "comment": "AFE (Authorization for Expenditure) header, child of WVJOB. AFEs allocate many-to-many across jobs/wells (WVAFEDETAIL %) — de-dup before variance.",
+      "columns": {
+        "IDRECPARENT": "FK to WVJOB.IDREC.",
+        "AFENUM": "AFE number.",
+        "AFEAMOUNT": "Authorized amount. Confirm baseline (original vs supplement). MASTER UNIT: currency.",
+        "AFESTATUS": "AFE status."
+      }
+    }
+  }
+}
