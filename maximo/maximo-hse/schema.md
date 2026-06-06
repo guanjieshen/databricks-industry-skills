@@ -145,9 +145,9 @@ Common / conceptual columns:
 - `ASSETNUM` / `LOCATION` — asset / where it happened.
 - `INCIDENTCATEGORY`, `SEVERITY` — **UNVERIFIED stock column names.** Category/severity and any recordable/Tier classification are typically driven by `CLASSIFICATION` (`CLASSSTRUCTUREID`) or a configurable value list, NOT a fixed stock column. Confirm in `MAXATTRIBUTE` / the workspace glossary (see gotchas).
 
-### `INVESTIGATION`
+### `INVESTIGATION` (TICKET, PROBLEM view)
 
-Per-incident investigation record. Columns: `INVESTIGATIONID`, `INCIDENTID`, root cause findings, corrective actions.
+**There is no standalone `INVESTIGATION` table.** An incident investigation is a `TICKET`-class record surfaced through the PROBLEM application view (the same core `TICKET` table described above, distinguished by `TICKET.CLASS`). It is therefore keyed by **`TICKETID`** — NOT a standalone `INVESTIGATIONID`/`INCIDENTID` pair. The link from an investigation back to its source incident is the ticket relationship (e.g. `ORIGRECORDID`/`ORIGRECORDCLASS` follow-up trace or `plusgrelatedrec`), keyed on **`TICKETID`**, consistent with gotcha #1 and the cardinality table. A literal column named `INVESTIGATIONID` was NOT confirmed in any source — treat it as UNVERIFIED and confirm against `MAXATTRIBUTE` before relying on it. Root-cause findings and corrective actions hang off the ticket via `ACTION` / `WORKLOG` rather than a dedicated investigation table.
 
 ### LOTO (Lock Out Tag Out) Plan
 

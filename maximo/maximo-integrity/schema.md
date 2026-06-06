@@ -23,7 +23,7 @@ Base Maximo Manage Condition Monitoring models observation points as **`MEASUREP
 
 This means structured inspection-result data (readings + limits) often lives in `MEASUREMENT` / `MEASUREPOINT` — **not only** in custom columns or an external PCMS. Check for this base mechanism before assuming findings are off-platform.
 
-Key `MEASUREPOINT` columns: `POINTNUM`, `ASSETNUM`/`LOCATION`, `SITEID`, `METERNAME`, `LOLIMIT`, `HILIMIT` (action limits). Key `MEASUREMENT` columns: `MEASUREDATE`, `MEASUREMENTVALUE` (numeric) / `OBSERVATION` (characteristic), `POINTNUM`.
+Key `MEASUREPOINT` columns: `POINTNUM`, `ASSETNUM`/`LOCATION`, `SITEID`, `METERNAME`, and the limit fields `LOWERWARNING` / `UPPERWARNING` / `LOWERACTION` / `UPPERACTION` (warning + action thresholds; readings outside the action limits trigger a WO). Key `MEASUREMENT` columns: `MEASUREDATE`, `MEASUREMENTVALUE` (numeric) / `OBSERVATION` (characteristic), `POINTNUM`.
 
 ### `ASSETMETER` — meter definitions per asset
 
@@ -33,7 +33,7 @@ For integrity, the key meters are:
 - **Operating hours** — runtime accumulation
 - **Pressure / temperature** — process variable monitoring
 
-Key columns: `METERNAME`, `WARNLIMITLO`, `WARNLIMITHI`, `ACTIONLIMITLO`, `ACTIONLIMITHI`. The `ACTIONLIMIT*` thresholds typically trigger an inspection or repair WO when breached.
+Key columns: `ASSETNUM` + `SITEID` + `METERNAME`, `LASTREADING`, `LASTREADINGDATE`, `AVERAGE`. **`ASSETMETER` has no warning/action-limit columns** — Condition Monitoring limits live on `MEASUREPOINT` (`LOWERWARNING`/`UPPERWARNING`/`LOWERACTION`/`UPPERACTION`); the meter *type* lives on the `METER` master, not here. Action-limit breaches typically trigger an inspection or repair WO.
 
 ### `METERREADING` — time-series readings against meters
 

@@ -168,15 +168,18 @@ SELECT
     rr.relatedrecwonum AS linked_wonum,         -- per APAR IJ41024 PLUSGRELATEDREC attr
     rr.relatedreckey   AS linked_record_id,
     rr.relatedrecclass AS linked_record_class,
-    rr.relationship
+    rr.relatetype      AS linked_relate_type      -- core RELATEDRECORD uses RELATETYPE, NOT a column named RELATIONSHIP
 FROM :catalog.:silver_schema.workorder w
 JOIN :catalog.:silver_schema.jobplan jp
     ON jp.jpnum = w.jpnum AND jp.__END_AT IS NULL
    AND jp.worktype IN ('REG', 'INSP', 'API510', 'API570', 'B31_4', 'CSA_Z662')
 LEFT JOIN :catalog.:silver_schema.failurecode fc
     ON fc.failurecode = w.failurecode
--- O&G overlay only — remove/guard if PLUSG* objects are not deployed:
+-- O&G overlay only — remove/guard if PLUSG* objects are not deployed.
+-- PLUSG* column names vary by version: confirm against MAXATTRIBUTE
+-- (WHERE objectname LIKE 'PLUSG%') before shipping. The source-side class
+-- column is CLASS (NOT recordclass), and the relate-type is RELATETYPE.
 LEFT JOIN :catalog.:silver_schema.plusgrelatedrec rr
     ON rr.recordkey = w.wonum
-   AND rr.recordclass = 'WORKORDER'
+   AND rr.class = 'WORKORDER'
 WHERE w.status IN ('COMP', 'CLOSE');

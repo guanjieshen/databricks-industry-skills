@@ -75,7 +75,7 @@ If a business term is ambiguous and no glossary covers it, **ask before guessing
 
 For any new question, resolve in this order:
 
-1. **Trusted UDFs** in [metric_udfs.sql](metric_udfs.sql) — `open_po_count`, `po_line_received_pct`, `po_cycle_time_days`. If a UDF matches, call it.
+1. **Trusted UDFs** in [metric_udfs.sql](metric_udfs.sql) — `open_po_count`, `po_line_received_pct`, `po_cycle_days`. If a UDF matches, call it.
 2. **Parameterized example query** — check [examples.sql](examples.sql) for an existing pattern; use it with the user's parameters.
 3. **Pre-joined view** — compose using `v_po_enriched` / `v_po_receipt_status` / `v_invoice_match` from [views.sql](views.sql).
 4. **Raw tables** — only when the view layer doesn't cover the join shape. Explain why you're skipping the views.

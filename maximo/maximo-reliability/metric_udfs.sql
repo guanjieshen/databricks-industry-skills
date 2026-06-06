@@ -106,8 +106,18 @@ RETURN (
 -- -----------------------------------------------------------------------------
 -- pm_compliance — Preventive Maintenance Compliance
 -- -----------------------------------------------------------------------------
--- Default: SMRP standard. PMs completed within 10% tolerance of effective due
--- date, divided by PMs scheduled in the window.
+-- PMs completed within a fixed grace window after the effective due date,
+-- divided by PMs scheduled in the window.
+--
+-- ON-TIME WINDOW (caller-supplied grace_days):
+--   The SMRP-canonical "on-time" definition is "completed within ±10% of the PM
+--   INTERVAL". That requires the per-PM frequency (PM.FREQUENCY + FREQUNIT) and
+--   a unit conversion to days — and FREQUNIT can be non-time-based (MILES,
+--   READINGS), which has no day equivalent. That cannot be done honestly in a
+--   single-statement UDF, so this UDF takes an explicit grace_days parameter and
+--   measures "completed within grace_days after the effective due date." To
+--   approximate SMRP for a homogeneous PM set, pass 10% of that set's interval
+--   in days (e.g. 3 for monthly PMs, 36 for annual). See gotcha 2.
 --
 -- KEY REFINEMENTS PER IBM PM FORECAST LOGIC DOCS:
 --   1. The effective due date is COALESCE(EXTDATE, NEXTDATE). EXTDATE is a
@@ -129,10 +139,11 @@ RETURN (
 CREATE OR REPLACE FUNCTION :catalog.:metrics_schema.pm_compliance(
     site_id STRING COMMENT 'SITEID. Pass NULL for all sites.',
     window_start TIMESTAMP,
-    window_end TIMESTAMP
+    window_end TIMESTAMP,
+    grace_days INT COMMENT 'On-time grace window in DAYS after the effective due date. For an SMRP-style ±10% target, pass 10% of the PM interval in days (e.g. 3 for monthly, 36 for annual). See gotcha 2.'
 )
 RETURNS DOUBLE
-COMMENT 'Trusted metric: PM compliance % using SMRP standard (10% tolerance). Uses COALESCE(EXTDATE, NEXTDATE) for the effective due date. Window applies to that effective due date. Only ACTIVE-state PMs count.'
+COMMENT 'Trusted metric: PM compliance % = PMs completed within grace_days after the effective due date, over PMs scheduled in the window. Effective due date is COALESCE(EXTDATE, NEXTDATE); the window applies to it. Only ACTIVE-state PMs count. grace_days is a fixed caller-supplied window, NOT the SMRP 10%-of-interval definition (which needs PM.FREQUENCY+FREQUNIT) — see gotcha 2.'
 RETURN (
     WITH scheduled AS (
         SELECT
@@ -152,8 +163,9 @@ RETURN (
             ON w.pmnum = s.pmnum AND w.siteid = s.siteid
            AND w.status IN ('COMP', 'CLOSE')
            AND w.actfinish IS NOT NULL
-           -- SMRP 10% tolerance applied to the effective due date
-           AND w.actfinish <= s.effective_due_date + INTERVAL 30 DAY
+           -- Fixed grace window (caller-supplied) after the effective due date.
+           -- NOT the SMRP 10%-of-interval definition — see gotcha 2.
+           AND w.actfinish <= s.effective_due_date + make_interval(0, 0, 0, grace_days, 0, 0, 0)
         GROUP BY s.pmnum, s.siteid
     ),
     metrics AS (
@@ -218,6 +230,6 @@ RETURN (
 -- GRANT USAGE ON SCHEMA :catalog.:metrics_schema TO `:principal`;
 -- GRANT EXECUTE ON FUNCTION :catalog.:metrics_schema.mtbf                       TO `:principal`;
 -- GRANT EXECUTE ON FUNCTION :catalog.:metrics_schema.mttr                       TO `:principal`;
--- GRANT EXECUTE ON FUNCTION :catalog.:metrics_schema.pm_compliance              TO `:principal`;
+-- GRANT EXECUTE ON FUNCTION :catalog.:metrics_schema.pm_compliance(STRING, TIMESTAMP, TIMESTAMP, INT) TO `:principal`;
 -- GRANT EXECUTE ON FUNCTION :catalog.:metrics_schema.time_since_last_failure    TO `:principal`;
 -- GRANT EXECUTE ON FUNCTION :catalog.:metrics_schema.time_since_last_pm         TO `:principal`;

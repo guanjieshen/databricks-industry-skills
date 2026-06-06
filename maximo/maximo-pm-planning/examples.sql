@@ -123,10 +123,14 @@ ORDER BY forecast_week, total_labor_hours DESC;
 -- -----------------------------------------------------------------------------
 -- Trigger: "when is next PM due for asset X", "meter-based PM forecast"
 -- (Moved from maximo-reliability — forward-looking content lives here.)
+-- Meter cadence lives on PMMETER (METERNAME + recurring FREQUENCY), NOT on PM.
+-- pmm.dateofnextwo is Maximo's own non-persistent estimate (often absent in Silver);
+-- the UDF computes the equivalent from LASTREADING / AVERAGE.
 SELECT
     pm.pmnum, pm.siteid, pm.assetnum,
-    pm.frequency, pm.frequnit,
-    am.metername,
+    pmm.metername,
+    pmm.frequency                                  AS meter_frequency,
+    pm.frequnit,
     am.lastreading,
     am.lastreadingdate,
     am.average                                     AS avg_per_day,
@@ -134,9 +138,12 @@ SELECT
         pm.pmnum, pm.siteid
     )                                              AS forecast_next_due
 FROM :catalog.:silver_schema.pm pm
+JOIN :catalog.:silver_schema.pmmeter pmm        -- meter cadence child table
+    ON pmm.pmnum = pm.pmnum AND pmm.siteid = pm.siteid
+   AND pmm.__END_AT IS NULL
 JOIN :catalog.:silver_schema.assetmeter am
     ON am.assetnum = pm.assetnum AND am.siteid = pm.siteid
-   AND am.metername = pm.metername          -- match the runtime meter, not all meters
+   AND am.metername = pmm.metername         -- match the PM's meter, not all meters
    AND am.__END_AT IS NULL
 WHERE pm.__END_AT IS NULL
   AND pm.status = 'ACTIVE'                   -- PMSTATUS synonym; see example 11

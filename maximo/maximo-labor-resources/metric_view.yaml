@@ -14,7 +14,7 @@
 #   https://docs.databricks.com/aws/en/business-semantics/agent-metadata
 #
 # Bind at registration: :catalog, :silver_schema (LABOR/PERSON/QUALPERSON/
-# CALENDAR/WORKPERIOD/AVAILREFLY MBO tables and v_labor_position), :gold_schema.
+# CALENDAR/WORKPERIOD/MODAVAIL MBO tables and v_labor_position), :gold_schema.
 # DBR 17.3+, YAML 1.1.
 #   CREATE VIEW :catalog.:gold_schema.labor_metrics WITH METRICS LANGUAGE YAML AS $$ <body> $$;
 #
@@ -68,9 +68,10 @@ fields:
     expr: labor_type
     display_name: Labor Type
     comment: >-
-      EMPLOYEE or CONTRACTOR (precomputed from VENDOR/OUTSIDELABOR — this skill's
-      gotcha 2). Customer convention varies; confirm via workspace glossary
-      before any contractor-mix metric.
+      EMPLOYEE or CONTRACTOR (precomputed from LABOR.VENDOR or the craft-rate
+      VENDOR — this skill's gotcha 2; there is no LABOR.OUTSIDELABOR column).
+      Customer convention varies; confirm via workspace glossary before any
+      contractor-mix metric.
     synonyms:
       - contractor vs employee
       - employee type
@@ -148,7 +149,7 @@ measures:
   - name: employee_count
     expr: COUNT_IF(labor_type = 'EMPLOYEE')
     display_name: Employee Count
-    comment: Count of employee labor (precomputed from VENDOR/OUTSIDELABOR). Identification convention is customer-specific (this skill's gotcha 2).
+    comment: Count of employee labor (precomputed from LABOR.VENDOR / craft-rate VENDOR; no LABOR.OUTSIDELABOR column). Identification convention is customer-specific (this skill's gotcha 2).
     synonyms:
       - employees
       - inside labor
@@ -217,7 +218,7 @@ measures:
   # NOTE: capacity (crew_capacity_hours), utilization (labor_utilization_pct),
   # expired qual count (expired_qualifications_count), and vacation impact
   # (vacation_impact_hours) are time-window UDFs that operate on WORKPERIOD /
-  # LABTRANS / AVAILREFLY / QUALPERSON across a window. They don't aggregate
+  # LABTRANS / MODAVAIL / QUALPERSON across a window. They don't aggregate
   # cleanly into a metric-view measure over the LABOR-master grain — call the
   # Trusted UDFs directly (or compose a sibling metric view over v_crew_capacity
   # / v_qualification_expiry).

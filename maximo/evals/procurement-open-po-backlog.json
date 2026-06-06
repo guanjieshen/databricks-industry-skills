@@ -5,6 +5,6 @@
     "Loads maximo-procurement with maximo-overview as parent",
     "Keys POs on SITEID + PONUM and excludes revision-history rows (status <> 'REVISD')",
     "Resolves the open-status set via SYNONYMDOMAIN (DOMAINID='POSTATUS') rather than hard-coding literals",
-    "Excludes COMP/CLOSE/CAN, groups by site"
+    "Excludes CLOSE/CAN and the REVISD revision-history rows, groups by site"
   ]
 }

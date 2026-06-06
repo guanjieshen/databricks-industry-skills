@@ -80,10 +80,16 @@ RETURN (
 
 
 -- -----------------------------------------------------------------------------
--- inventory_turns — annualized usage / average on-hand for an item
+-- inventory_turns — annualized issue quantity / current available (approximation)
 -- -----------------------------------------------------------------------------
 -- Higher turns = more rapid stock rotation. Industry benchmark varies (4-12 is
 -- typical for spares; lower for slow-moving critical items).
+-- APPROXIMATION: textbook turns = cost-of-issues / average on-hand value. This
+-- UDF instead uses annualized ISSUE *quantity* (not cost) over CURRENT available
+-- *quantity* (not a time-averaged on-hand), because MATUSETRANS gives a clean
+-- per-issue qty while a true period-average balance would need a balance-history
+-- snapshot this skill does not assume. Use as a relative velocity indicator, not
+-- an audited financial turns figure.
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION :catalog.:metrics_schema.inventory_turns(
     itemnum_param STRING,
@@ -91,7 +97,7 @@ CREATE OR REPLACE FUNCTION :catalog.:metrics_schema.inventory_turns(
     window_days INT COMMENT 'Look-back window for usage (e.g. 365)'
 )
 RETURNS DOUBLE
-COMMENT 'Trusted metric: annualized inventory turns = (usage in window, annualized) / (current available qty).'
+COMMENT 'Trusted metric: approximate inventory turns = (ISSUE quantity in window, annualized) / (current available qty). Quantity-based, current-balance denominator — a velocity indicator, not cost-based audited turns.'
 RETURN (
     WITH usage AS (
         SELECT SUM(quantity) AS qty_used

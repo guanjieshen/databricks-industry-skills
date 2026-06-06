@@ -69,12 +69,12 @@ The PMANCESTOR table is a **closure table** for the PM hierarchy: one row per (a
 
 | Column | Notes |
 |---|---|
-| `PMNUM` | The descendant PM |
-| `SITEID` | Composite with PMNUM |
-| `ANCESTOR` | An ancestor PMNUM at any depth |
-| `ANCESTOR_SITEID` | Composite with ANCESTOR |
+| `PMNUM` | The descendant PM (part of the key) |
+| `ANCESTOR` | An ancestor PMNUM at any depth (part of the key) |
+| `HIERARCHYLEVELS` | Number of levels between the ancestor and descendant |
+| `SITEID` | Site scope; ancestor and descendant share the same `SITEID` |
 
-A naive `PM.PARENT` self-join misses indirect ancestors. Always use `PMANCESTOR` for hierarchy queries.
+The ancestor is identified by `ANCESTOR` within the same `SITEID` (there is no separate ancestor-site column). A naive `PM.PARENT` self-join misses indirect ancestors. Always use `PMANCESTOR` for hierarchy queries.
 
 ### `PMSEQUENCE`
 
@@ -89,16 +89,15 @@ Condition-monitoring meters per asset.
 | Column | Notes |
 |---|---|
 | `ASSETNUM` + `SITEID` + `METERNAME` | Composite key |
-| `METERTYPE` | `CONTINUOUS`, `GAUGE`, `CHARACTERISTIC` |
-| `WARNLIMITLO` / `WARNLIMITHI` | Warning thresholds |
-| `ACTIONLIMITLO` / `ACTIONLIMITHI` | Action thresholds (typically trigger inspection / repair WO) |
 | `LASTREADING` | Most recent reading value |
 | `LASTREADINGDATE` | When most recent reading was taken |
-| `AVERAGE` | **Maximo-computed rolling average meter-units per day**. Required for meter-based PM forecasting: `next_due ≈ LASTREADINGDATE + (FREQUENCY - LASTREADING) / AVERAGE`. Can be NULL / zero for new meters |
+| `AVERAGE` | **Maximo-computed rolling average meter-units per day**. Used in meter-based PM forecasting (the PM interval lives on `PMMETER.FREQUENCY`, not here — see `maximo-pm-planning`). Can be NULL / zero for new meters |
+
+Note: the meter *type* (`CONTINUOUS`/`GAUGE`/`CHARACTERISTIC`) is a property of the meter master `METER` (joined via `METERNAME`), **not** a column on `ASSETMETER`. And `ASSETMETER` has **no** warning/action-limit columns — Condition Monitoring limits live on `MEASUREPOINT` as `LOWERWARNING`/`UPPERWARNING`/`LOWERACTION`/`UPPERACTION`.
 
 `METERREADING` is the time-series: append-only readings against meters.
 
-For meter-driven failure prediction or threshold-exceedance analysis, join `METERREADING` to `ASSETMETER` to compare reading values against `WARNLIMITHI` / `ACTIONLIMITHI` / `WARNLIMITLO` / `ACTIONLIMITLO`.
+For meter-driven failure prediction or threshold-exceedance analysis, compare `METERREADING` values against the Condition Monitoring limits on `MEASUREPOINT` (`LOWERWARNING`/`UPPERWARNING`/`LOWERACTION`/`UPPERACTION`) — for that analysis defer to `maximo-integrity`.
 
 ## Cardinality summary (reliability-specific)
 

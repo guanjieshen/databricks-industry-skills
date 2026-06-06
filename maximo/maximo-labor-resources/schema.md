@@ -6,10 +6,10 @@
 - `PERSON` — person master
 - `CRAFT` + `LABORCRAFTRATE` — crafts and rates
 - Qualifications — `QUALIFICATION`, `CERTIFICATION`, `QUALPERSON`
-- Crews — `CREW`, `CREWLABOR`, `CREWWORKGROUP`, `CREWTYPE`
+- Crews — `AMCREW`, `AMCREWLABOR`, `AMCREWT`
 - Person groups — `PERSONGROUP`, `PERSONGROUPTEAM`
-- Capacity — `CALENDAR`, `WORKPERIOD`, `AVAILREFLY`
-- Assignment & reporting — `ASSIGNMENT`, `LABREPHIST`
+- Capacity — `CALENDAR`, `WORKPERIOD`, `MODAVAIL`
+- Assignment & reporting — `ASSIGNMENT` (labor actuals live in `LABTRANS`, owned by `maximo-work-orders`)
 - Cardinality summary
 
 For the universal Maximo schema, see `maximo-overview`. This skill focuses on labor + capacity tables.
@@ -31,7 +31,8 @@ One row per maintainable resource (employee or contractor). Has craft + rate + s
 | `CALNUM` | Default calendar for this labor (FK to `CALENDAR`) |
 | `SHIFTNUM` | Default shift |
 | `PERSONGROUP` | Default person group |
-| `OUTSIDELABOR` | `1` if outside (vendor) labor — alternate contractor flag |
+
+There is **no** `LABOR.OUTSIDELABOR` column. Inside-vs-outside (employee vs contractor) labor is determined by `LABOR.VENDOR` (FK to `COMPANIES`, most common) or by whether the labor's `CRAFT` (via `LABORCRAFTRATE`) has a `VENDOR` populated — a contractor-craft convention. See gotchas §2.
 
 ## `PERSON` — person master
 
@@ -101,32 +102,32 @@ For "qualified labor", filter `(EXPIRYDATE IS NULL OR EXPIRYDATE > current_date(
 
 ## Crews
 
-### `CREW`
+The crew master is `AMCREW` (NOT a `CREW` table). The crew identifier value on transactional records is a column named `CREWID` (e.g. `WORKORDER.CREWID` is a real column — the crew field on the work order), but the **master** table is keyed `(ORGID, AMCREW)` and its identifier column is `AMCREW`. Join transactional crew references to the master via `AMCREW.AMCREW = <txn>.CREWID`.
+
+### `AMCREW` — crew master
 
 | Column | Notes |
 |---|---|
-| `CREWID` | Crew identifier |
-| `ORGID` | Composite |
-| `CREWTYPE` | FK to `CREWTYPE` |
+| `AMCREW` | Crew identifier (PK component; the master's crew code). Referenced as the value `CREWID` on transactional records like `WORKORDER.CREWID` |
+| `ORGID` | Composite — keyed `(ORGID, AMCREW)` |
+| `AMCREWTYPE` | FK to `AMCREWT` (crew type) |
 | `STATUS` | `ACTIVE` / `INACTIVE` |
-| `BASELOCATION` | Home location |
+| `WORKGROUP` | Attribute on `AMCREW` referencing a Person Group — there is **no** separate crew-workgroup binding table |
 
-### `CREWLABOR` — crew composition (labor ↔ crew)
+### `AMCREWLABOR` — crew composition (labor ↔ crew)
 
 | Column | Notes |
 |---|---|
-| `CREWID` / `ORGID` | FK to CREW |
+| `AMCREW` / `ORGID` | FK to AMCREW |
 | `LABORCODE` | FK to LABOR — one row per labor member |
-| `STARTDATE` / `ENDDATE` | Membership period |
+| `CRAFT` | Craft the member fills on the crew |
+| `SKILLLEVEL` | Skill level on the crew |
+| `EFFECTIVEDATE` / `ENDDATE` | Membership period (NOTE: `EFFECTIVEDATE`, not `STARTDATE`) |
 | `POSITION` | Crew position (lead, member, etc.) |
 
-For "current crew" filter `STARTDATE <= current_date() AND (ENDDATE IS NULL OR ENDDATE > current_date())`.
+For "current crew" filter `EFFECTIVEDATE <= current_date() AND (ENDDATE IS NULL OR ENDDATE > current_date())`.
 
-### `CREWWORKGROUP` — crew ↔ workgroup binding
-
-Crews can be assigned to multiple work groups; this is the binding.
-
-### `CREWTYPE`
+### `AMCREWT` — crew type
 
 Defines the type of crew (e.g. Electrical Distribution Crew, Field Operations Crew) and the **required** craft mix per crew — drives "is this crew valid" checks.
 
@@ -148,35 +149,41 @@ Defines the type of crew (e.g. Electrical Distribution Crew, Field Operations Cr
 
 ### `WORKPERIOD`
 
-Specific work periods within a calendar — shifts, days off, holidays.
+Specific work periods within a calendar — one row per working day per shift.
 
 | Column | Notes |
 |---|---|
 | `CALNUM` / `ORGID` | FK to CALENDAR |
+| `SITEID` | Site scope |
 | `SHIFTNUM` | Shift identifier |
-| `STARTDATE` | Period start (date + time) |
-| `ENDDATE` | Period end |
-| `HOURS` | Available hours in the period |
-| `PERIODTYPE` | `WORK`, `HOLIDAY`, `EXCEPTION`, etc. |
+| `WORKDATE` | The working day (date) |
+| `SHIFTSTART` | Shift start time |
+| `SHIFTEND` | Shift end time |
+
+There is **no** `WORKPERIOD.HOURS`, `WORKPERIOD.PERIODTYPE`, or `WORKPERIOD.STARTDATE` column. Scheduled hours must be **DERIVED** from the `SHIFTSTART`/`SHIFTEND` time difference. Working vs non-working time is handled via the calendar / `MODAVAIL`, not a `WORKPERIOD.PERIODTYPE` filter.
 
 **Coverage check** before using for capacity claims:
 
 ```sql
-SELECT MIN(startdate), MAX(startdate), COUNT(*)
+SELECT MIN(workdate), MAX(workdate), COUNT(*)
 FROM workperiod
-WHERE calnum = '<your-calendar>' AND periodtype = 'WORK';
+WHERE calnum = '<your-calendar>';
 ```
 
-### `AVAILREFLY` — planned absences (vacation / leave / training)
+### `MODAVAIL` — availability modifications ("Modify Availability")
 
-One row per planned non-availability event.
+Per-resource (labor/crew) availability modifications, defined separately from the shared `CALENDAR` / `SHIFT` / `WORKPERIOD`. Holds **both** working-time and non-working-time rows. **Planned absences (vacation / sick / personal / training) are the NON-WORK rows**, identified by a reason code (`RSNCODE` synonym domain — e.g. `VAC` / `SICK` / `PERSONAL`). Filter to the non-work reason codes to isolate absences; do not treat every row as an absence.
 
-| Column | Notes |
+> **MODAVAIL's exact column names are NOT publicly documented.** The columns below are the *expected* semantics, not verified physical names — **confirm against `MAXATTRIBUTE` (object `MODAVAIL`) in this deployment before use.** Do not assert these as canonical.
+
+| Column (confirm in deployment) | Expected semantics |
 |---|---|
-| `LABORCODE` / `ORGID` | FK to LABOR |
-| `STARTDATETIME` / `ENDDATETIME` | When the absence is scheduled |
-| `REFTYPE` | Reason (vacation, sick, training, etc.) |
-| `HOURS` | Affected hours |
+| labor / crew + `ORGID` key | FK to LABOR (or CREW) — resource whose availability is modified |
+| start / end datetime | When the modification applies |
+| `RSNCODE` | Reason code (synonym domain) — distinguishes work vs non-work; absence reasons (VAC/SICK/PERSONAL) are the non-work rows |
+| affected hours | Hours added/removed by the modification |
+
+Treat the absence-aware UDFs/views shipped in this skill as **templates pending column verification**, not canonical SQL.
 
 ## Assignment & reporting
 
@@ -193,16 +200,9 @@ WO ↔ labor assignment (labor scheduled to do specific WO work).
 | `ESTDUR` | Estimated duration |
 | `STATUS` | `NEW`, `ASSIGNED`, `COMPLETE` |
 
-### `LABREPHIST` — labor reporting history
+### Labor reporting / actuals → `LABTRANS` (not a separate history table)
 
-Audit log of labor reporting per pay period. Used by payroll. **For cost / hours analytics use `LABTRANS`** (see `maximo-work-orders`).
-
-| Column | Notes |
-|---|---|
-| `LABORCODE` / `ORGID` | FK to LABOR |
-| `PAYPERIOD` | Pay-period identifier |
-| `REPORTEDHRS` | Reported hours |
-| `STATUS` | `WAPPR`, `APPR`, `PROCESSED` |
+The Maximo Labor Reporting application writes to **`LABTRANS`** — the cost-bearing per-WO transaction. There is **no** separate Maximo labor-reporting-history table. For reported/actual hours and cost analytics, use `LABTRANS` (owned by `maximo-work-orders`, consumed by `maximo-maintenance-cost`). Payroll/timekeeping reconciliation typically happens in an **external timekeeping system**, not inside Maximo.
 
 ## Cardinality summary
 
@@ -212,12 +212,11 @@ Audit log of labor reporting per pay period. Used by payroll. **For cost / hours
 | `LABOR` → `LABORCRAFTRATE` | 1 : N (multiple craft rates per labor) |
 | `PERSON` → `QUALPERSON` | 1 : N |
 | `QUALIFICATION` → `QUALPERSON` | 1 : N |
-| `CREW` → `CREWLABOR` | 1 : N |
-| `CREW` → `CREWWORKGROUP` | 1 : N |
-| `LABOR` → `CREWLABOR` | 1 : N (labor can be on multiple crews over time) |
-| `LABOR` → `AVAILREFLY` | 1 : N |
+| `AMCREW` → `AMCREWLABOR` | 1 : N |
+| `AMCREW` → `PERSONGROUP` (via `WORKGROUP` attribute) | N : 0..1 |
+| `LABOR` → `AMCREWLABOR` | 1 : N (labor can be on multiple crews over time) |
+| `LABOR` → `MODAVAIL` | 1 : N (availability modifications; non-work rows = absences) |
 | `CALENDAR` → `WORKPERIOD` | 1 : N |
 | `WORKORDER` → `ASSIGNMENT` | 1 : N |
-| `LABOR` → `LABREPHIST` | 1 : N |
-| `LABOR` → `LABTRANS` (referenced from `maximo-work-orders`) | 1 : N |
+| `LABOR` → `LABTRANS` (labor actuals; referenced from `maximo-work-orders`) | 1 : N |
 | `LABOR` → `COMPANIES` (via VENDOR, for contractors) | N : 1 |

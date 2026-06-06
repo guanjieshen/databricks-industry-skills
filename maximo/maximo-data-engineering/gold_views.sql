@@ -1,10 +1,8 @@
 -- =============================================================================
 -- Maximo Gold Views — reusable analytical surface
 -- =============================================================================
--- Contents:
---   v_workorder_enriched        WORKORDER + current ASSET + current LOCATIONS + age
---   v_workorder_status_history  WOSTATUS unpacked with time-in-state
---   v_labor_actuals             LABTRANS aggregated to WO grain
+-- Contents (CROSS-DOMAIN views only — single-domain WO views are owned by
+-- maximo-work-orders; see the reference note below):
 --   v_failure_events            completed WOs with coded failure data
 --   v_pm_schedule               PM master + next-due age
 --
@@ -64,9 +62,11 @@ LEFT JOIN :catalog.:silver_schema.failurecode fc
     ON fc.failurecode = fr.failurecode
 LEFT JOIN :catalog.:silver_schema.asset a
     ON a.assetnum = w.assetnum AND a.siteid = w.siteid AND a.__END_AT IS NULL
--- "Completed" = COMP-or-later. Resolve the synonym set via SYNONYMDOMAIN instead
--- of literals, because WORKORDER.STATUS stores the customer-renamable synonym
--- (VALUE), not the internal MAXVALUE. COMP <> CLOSE (many shops never CLOSE).
+-- "Completed" = the completed set COMP/CLOSE (both terminal states, not a
+-- COMP-or-later range). Resolve the synonym set via SYNONYMDOMAIN instead of
+-- literals, because WORKORDER.STATUS stores the customer-renamable synonym
+-- (VALUE), not the internal MAXVALUE. COMP <> CLOSE (many shops never CLOSE),
+-- so both MAXVALUEs are included here.
 WHERE w.status IN (
     SELECT value FROM :catalog.:silver_schema.synonymdomain
     WHERE domainid = 'WOSTATUS' AND maxvalue IN ('COMP', 'CLOSE')

@@ -113,12 +113,12 @@ PM-vs-CM material spend — belongs to `maximo-maintenance-cost`; don't sum
 
 | `ISSUETYPE` | Effect on on-hand |
 |---|---|
-| `ISSUE` | Decreases on-hand at source storeroom |
-| `RETURN` | Increases on-hand at source storeroom (issued part returned unused) |
+| `ISSUE` | Decreases on-hand at source storeroom — `QUANTITY` positive |
+| `RETURN` | Increases on-hand at source storeroom (issued part returned unused) — `QUANTITY` negative |
 | `TRANSFER` | Decreases at source, increases at destination (`TOSTOREROOM`) |
 | `ADJUSTMENT` | Manual correction — could be either direction |
 
-**For "consumption" or "usage" analytics, filter `ISSUETYPE IN ('ISSUE', 'RETURN')`** and net them out. Including `TRANSFER` double-counts movements (the destination already has its own `MATRECTRANS` or balance change).
+**For "consumption" or "usage" analytics, filter `ISSUETYPE IN ('ISSUE', 'RETURN')` and net via `SUM(QUANTITY)`.** `QUANTITY` is signed (issues positive, returns negative), so a single `SUM` nets returns out correctly. Do NOT write `SUM(issue) - SUM(return)` — returns are already negative, so subtracting them double-flips the sign and makes a return *increase* consumption. Including `TRANSFER` also double-counts movements (the destination already has its own `MATRECTRANS` or balance change).
 
 ## 6. Unit-of-measure conversions are silent
 

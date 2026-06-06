@@ -3,10 +3,10 @@ name: maximo-labor-resources
 description: |
   Use for IBM Maximo / Maximo / EAM / CMMS labor-resource analytics — the labor
   master and capacity layer. Covers labor masters (LABOR), persons (PERSON),
-  crafts (CRAFT, LABORCRAFTRATE), qualifications and certifications
-  (QUALIFICATION, CERTIFICATION, QUALPERSON), crews (CREW, CREWLABOR, CREWTYPE),
-  person groups (PERSONGROUP), shift calendars (CALENDAR, WORKPERIOD), planned
-  absences (AVAILREFLY), and WO assignments (ASSIGNMENT, LABREPHIST). Answers
+  crafts (CRAFT, LABORCRAFTRATE), qualifications (QUALIFICATION, QUALPERSON),
+  crews (AMCREW, AMCREWLABOR), person groups (PERSONGROUP), shift calendars
+  (CALENDAR, WORKPERIOD), availability incl. planned absences (MODAVAIL), and
+  WO assignments (ASSIGNMENT). Answers
   "who can do this work", "crew utilization", "expiring certifications",
   "available craft-hours next week", "contractor vs employee mix",
   "qualifications for asset class X", "assignment backlog". Triggers on:
@@ -44,22 +44,24 @@ This skill owns the **labor master** + **capacity** layer. For *actual* labor co
 
 1. **`LABOR` ≠ `PERSON`** — `LABOR` is the maintainable resource record (craft + rate + status); `PERSON` is the human. Not every person is labor (admin staff aren't); some labor records are contractor resources with `PERSONID = NULL` and no `PERSON` link. An `INNER JOIN` silently drops contractor labor — use `LEFT JOIN labor → person`.
 
-2. **Contractor identification varies by customer** — most common is `LABOR.VENDOR IS NOT NULL` (links to `COMPANIES`); others use `LABOR.OUTSIDELABOR = 1` or a custom `LABOR.LABORTYPE` value. Always check the workspace glossary before classifying labor as contractor vs employee. The `contractor_spend` UDF in `maximo-maintenance-cost` uses the vendor-link pattern by default.
+2. **Contractor identification varies by customer** — most common is `LABOR.VENDOR IS NOT NULL` (links to `COMPANIES`); others key off whether the labor's `CRAFT` (via `LABORCRAFTRATE`) carries a `VENDOR`, or a custom `LABOR.LABORTYPE` value. There is **no** `LABOR.OUTSIDELABOR` column — don't use it. Always check the workspace glossary before classifying labor as contractor vs employee. The `contractor_spend` UDF in `maximo-maintenance-cost` uses the vendor-link pattern by default.
 
-3. **`CALENDAR` / `WORKPERIOD` are often sparsely populated** — about half of customers don't maintain forward-year `WORKPERIOD` rows. A query that claims "we have X hours of capacity next month" silently returns zero if `WORKPERIOD` doesn't cover that window. Probe coverage first (see `gotchas.md` §3). Note: `WORKPERIOD.STARTDATE/ENDDATE` are app-server-TZ datetimes — see overview gotcha 7 before bucketing capacity by week across sites.
+3. **`CALENDAR` / `WORKPERIOD` are often sparsely populated** — about half of customers don't maintain forward-year `WORKPERIOD` rows. A query that claims "we have X hours of capacity next month" silently returns zero if `WORKPERIOD` doesn't cover that window. Probe coverage first (see `gotchas.md` §3). Note: scheduled hours are DERIVED from `WORKPERIOD.SHIFTSTART/SHIFTEND` (there is no `WORKPERIOD.HOURS` or `PERIODTYPE` column), and `WORKPERIOD.WORKDATE` / `SHIFTSTART` / `SHIFTEND` are app-server-TZ — see overview gotcha 7 before bucketing capacity by week across sites.
 
 4. **`QUALPERSON.EXPIRYDATE`** — expired certifications mean the person can no longer be assigned to qualified work. Filter `(EXPIRYDATE IS NULL OR EXPIRYDATE > current_date()) AND STATUS = 'ACTIVE'` when checking "who's qualified." Filtering only on `QUALPERSON` existence inflates the qualified pool.
 
-5. **`LABREPHIST` ≠ `LABTRANS`** — `LABREPHIST` is the labor-reporting audit log (reported hours per pay period, used by payroll); `LABTRANS` is the cost-bearing per-WO transaction. For analytics **prefer `LABTRANS`** (owned by `maximo-work-orders`, consumed by `maximo-maintenance-cost`). Use `LABREPHIST` only for payroll reconciliation.
+5. **Labor reporting / actuals = `LABTRANS` — there is no Maximo labor-reporting-history table.** The Labor Reporting application writes to `LABTRANS` (the cost-bearing per-WO transaction, owned by `maximo-work-orders`, consumed by `maximo-maintenance-cost`). Payroll/timekeeping reconciliation typically happens in an **external timekeeping system**, not a Maximo table — don't expect a `LABREPHIST`-style object.
 
-6. **Status columns are synonym domains — don't hard-code literals.** `LABOR.STATUS`, `ASSIGNMENT.STATUS`, `QUALPERSON.STATUS`, and the `WORKORDER.STATUS` you join to all store the customer-renamable synonym, not the internal value. Resolve sets via `SYNONYMDOMAIN` (domains here include `LABORSTATUS`, `ASSIGNSTATUS`/`AMCREWSTATUS` per deployment) exactly as overview gotcha 5 prescribes — the examples in this skill use literals only because stock Maximo has internal==external; switch to `SYNONYMDOMAIN` resolution if the deployment added synonyms.
+6. **`MODAVAIL` holds availability modifications (incl. planned absences) — it is NOT an absence-only table.** Person/labor (and crew) availability is defined per resource via the "Modify Availability" object `MODAVAIL`, separate from the shared `CALENDAR`/`SHIFT`/`WORKPERIOD`. `MODAVAIL` carries BOTH working-time and non-working-time rows; **planned absences (vacation/sick/personal) are the NON-WORK rows**, identified by a reason code (`RSNCODE` synonym domain, e.g. `VAC`/`SICK`/`PERSONAL`). Filter to the non-work reason codes to get absences — don't treat every `MODAVAIL` row as an absence. **MODAVAIL's exact column names are not publicly documented; confirm columns against `MAXATTRIBUTE` in this deployment** before relying on the absence-aware UDFs/views (they are templates).
+
+7. **Status columns are synonym domains — don't hard-code literals.** `LABOR.STATUS`, `ASSIGNMENT.STATUS`, `QUALPERSON.STATUS`, and the `WORKORDER.STATUS` you join to all store the customer-renamable synonym, not the internal value. Resolve sets via `SYNONYMDOMAIN` (domains here include `LABORSTATUS`, `ASSIGNSTATUS`/`AMCREWSTATUS` per deployment) exactly as overview gotcha 5 prescribes — the examples in this skill use literals only because stock Maximo has internal==external; switch to `SYNONYMDOMAIN` resolution if the deployment added synonyms.
 
 ## Questions to surface first
 
 Ask these before answering — each has multiple defensible interpretations and no safe default:
 
-1. **"How do you identify contractor vs employee labor?"** — `VENDOR IS NOT NULL`, `OUTSIDELABOR = 1`, and custom `LABORTYPE` values are all in use across deployments and give different counts. Confirm the convention (workspace glossary) before any contractor-mix or outside-labor metric.
-2. **"What does 'available capacity' mean here — scheduled hours, or scheduled net of planned absences?"** — `WORKPERIOD` alone gives gross scheduled hours; subtracting overlapping `AVAILREFLY` gives net-of-vacation. And `WORKPERIOD` may not cover the forecast window at all (gotcha 3). Confirm the definition and the coverage before quoting a capacity number.
+1. **"How do you identify contractor vs employee labor?"** — `LABOR.VENDOR IS NOT NULL`, a craft-rate `VENDOR` (via `LABORCRAFTRATE`), and custom `LABORTYPE` values are all in use across deployments and give different counts (there is no `LABOR.OUTSIDELABOR` column). Confirm the convention (workspace glossary) before any contractor-mix or outside-labor metric.
+2. **"What does 'available capacity' mean here — scheduled hours, or scheduled net of planned absences?"** — `WORKPERIOD` alone gives gross scheduled hours; subtracting overlapping `MODAVAIL` non-work (absence) rows gives net-of-vacation. And `WORKPERIOD` may not cover the forecast window at all (gotcha 3). Confirm the definition and the coverage before quoting a capacity number.
 3. **"What counts as 'qualified' — any holding, or a current non-expired ACTIVE certification?"** — including lapsed certs inflates the pool; some customers also require `QUALIFICATION.REQUIREDFORWORK = 1` matching. Confirm which.
 4. **"Utilization against what denominator?"** — booked `LABTRANS` hours over scheduled `WORKPERIOD` hours, over calendar hours, or over net-of-absence hours all yield different percentages. Confirm the denominator (and whether overtime/premium hours count) before reporting utilization.
 
@@ -69,8 +71,8 @@ Cache these once; don't re-ask each turn:
 
 1. **Silver catalog/schema** — confirm via workspace glossary.
 2. **Calendar coverage** — `CALENDAR` / `WORKPERIOD` are often half-populated. Verify rows exist for the forecast window (gotchas.md §3 probe) before claiming "we have capacity for X."
-3. **Contractor convention** — whether contractors are `LABOR.VENDOR IS NOT NULL`, `OUTSIDELABOR = 1`, or a custom `LABORTYPE` (per the workspace glossary).
-4. **App-server timezone** — a `maximo-setup` deployment fact; needed before bucketing `WORKPERIOD` / `AVAILREFLY` datetimes by week across sites (overview gotcha 7).
+3. **Contractor convention** — whether contractors are `LABOR.VENDOR IS NOT NULL`, identified via a craft-rate `VENDOR` (`LABORCRAFTRATE`), or a custom `LABORTYPE` (per the workspace glossary).
+4. **App-server timezone** — a `maximo-setup` deployment fact; needed before bucketing `WORKPERIOD` / `MODAVAIL` datetimes by week across sites (overview gotcha 7).
 
 ## Workflow
 
@@ -83,8 +85,8 @@ Resolution priority — prefer the highest available rung:
 
 ## What's in this skill (load when…)
 
-- [schema.md](schema.md) — full table reference (LABOR, PERSON, CRAFT, LABORCRAFTRATE, QUALIFICATION + CERTIFICATION + QUALPERSON, CREW family, CALENDAR / WORKPERIOD / AVAILREFLY, ASSIGNMENT, LABREPHIST). **Load when** writing non-trivial joins or when you need column-level detail.
-- [gotchas.md](gotchas.md) — extended versions of the inline gotchas plus more (currency on rates, crew rollup, qualification hierarchy, person-group nesting, employee-vs-contractor blends, AVAILREFLY/WORKPERIOD sync). **Load when** the query touches a table the inline gotchas don't cover.
+- [schema.md](schema.md) — full table reference (LABOR, PERSON, CRAFT, LABORCRAFTRATE, QUALIFICATION + CERTIFICATION + QUALPERSON, AMCREW family, CALENDAR / WORKPERIOD / MODAVAIL, ASSIGNMENT). **Load when** writing non-trivial joins or when you need column-level detail.
+- [gotchas.md](gotchas.md) — extended versions of the inline gotchas plus more (currency on rates, crew rollup, qualification hierarchy, person-group nesting, employee-vs-contractor blends, MODAVAIL/WORKPERIOD sync). **Load when** the query touches a table the inline gotchas don't cover.
 - [examples.sql](examples.sql) — 10 parameterized gold-standard queries. **Load when** the user's question maps to a common pattern (crew utilization, expiring certs, etc.).
 - [views.sql](views.sql) — DDL for the gold views. **Load when** registering the views in a new customer environment.
 - [metric_udfs.sql](metric_udfs.sql) — UC SQL function DDL for Trusted UDFs. **Load when** registering metrics in UC.
@@ -94,7 +96,8 @@ Resolution priority — prefer the highest available rung:
 - Don't `INNER JOIN` `LABOR` to `PERSON` unless you specifically need only labor-with-person — you'll miss contractor labor records (`PERSONID IS NULL`).
 - Don't compute "available capacity" without first probing `WORKPERIOD` coverage — the answer may be silently zero.
 - Don't count expired or inactive certifications as qualified. Filter `EXPIRYDATE` and `STATUS`.
-- Don't use `LABREPHIST` for cost — that's `LABTRANS`'s job (owned by `maximo-work-orders`).
+- Don't invent a `LABREPHIST`-style labor-reporting-history table — labor actuals are `LABTRANS` (owned by `maximo-work-orders`); payroll/timekeeping reconciliation lives in an external timekeeping system, not Maximo.
+- Don't treat every `MODAVAIL` row as an absence — it holds both work and non-work rows; absences are the non-work `RSNCODE` rows. And don't assert specific `MODAVAIL` columns as canonical (they're undocumented — confirm against `MAXATTRIBUTE`).
 - Don't aggregate rates across currencies (`LABORCRAFTRATE.CURRENCYCODE` may vary). For total labor cost / multi-currency normalization, DEFER to `maximo-maintenance-cost` — don't re-derive cost rollups here.
 - Don't hard-code status literals when the deployment has custom synonyms — resolve via `SYNONYMDOMAIN` (overview gotcha 5).
 - Don't assume closed WOs are present when joining `ASSIGNMENT` → `WORKORDER` — IBM-shipped views filter `HISTORYFLAG = 0` (overview gotcha 6).

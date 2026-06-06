@@ -40,7 +40,7 @@ Triggered by forward-looking PM-planning questions:
 **Defer to siblings when:**
 - Backward-looking PM performance — compliance %, time-since-last-PM, MTBF → `maximo-reliability`
 - PM cost (PM-vs-CM *cost*, planned-vs-actual cost variance) → `maximo-maintenance-cost`
-- Crew capacity / availability master (`CALENDAR`, `WORKPERIOD`, `AVAILREFLY`) → `maximo-labor-resources`
+- Crew capacity / availability master (`CALENDAR`, `WORKPERIOD`, `MODAVAIL`) → `maximo-labor-resources`
 
 Both this skill and `maximo-reliability` touch the `PM` table. Direction decides: forecast / upcoming workload / JOBPLAN content / strategy design → here; "how well did our PMs perform?" → reliability.
 
@@ -103,7 +103,7 @@ For any new question, resolve in this order:
 
 ## Composes with
 
-- **`maximo-labor-resources`** — **the highest-value composition.** Workload-vs-capacity gap analytics: this skill provides forecast workload (`v_pm_workload_by_craft`, `pm_workload_hours` UDF); labor-resources provides matching capacity (`v_crew_capacity`, `crew_capacity_hours` UDF) and owns the `CALENDAR`/`WORKPERIOD`/`AVAILREFLY` availability master. The joined query — gap by craft × week — is the canonical answer to "are we over-scheduled?"
+- **`maximo-labor-resources`** — **the highest-value composition.** Workload-vs-capacity gap analytics: this skill provides forecast workload (`v_pm_workload_by_craft`, `pm_workload_hours` UDF); labor-resources provides matching capacity (`v_crew_capacity`, `crew_capacity_hours` UDF) and owns the `CALENDAR`/`WORKPERIOD`/`MODAVAIL` availability master. The joined query — gap by craft × week — is the canonical answer to "are we over-scheduled?"
 - **`maximo-asset-hierarchy`** — for forecast-PMs-rolled-up-to-region. The shipped `v_pm_route_clusters` uses `LOCATIONS.PARENT` (one level); for deeper grouping, compose with `LOCANCESTOR` / `v_location_rollup_keys`.
 - **`maximo-reliability`** — shares the `PM` schema and owns the full `PM` reference; defer all backward-looking analytics (compliance %, MTBF, time-since-last) there.
 - **`maximo-work-orders`** — PM-generated WOs are instances (`WORKORDER.PMNUM`); backlog and execution status of forecast PMs surface there. When querying generated WOs, apply `maximo-overview`'s `HISTORYFLAG`/`WOCLASS` rules.

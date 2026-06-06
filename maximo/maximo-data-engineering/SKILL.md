@@ -76,12 +76,12 @@ This is the most important content of the skill. For each Maximo table, the corr
 | `LABTRANS` | **Streaming Table, append-only** | Append; transactions don't update |
 | `ASSET` | **SCD Type 2** | Long-lived; need history of attribute changes for time-travel queries |
 | `LOCATIONS` | **SCD Type 2** | Hierarchies change; need temporal queries |
-| `LOCHIERARCHY` | **Materialized View** rebuilt from LOCATIONS each run | Derived hierarchy — easier as MV than streaming |
+| `LOCHIERARCHY` | **Materialized View** (Bronze pass-through) | Real Maximo table; small, slow-changing — full-refresh MV |
 | `PM` | **SCD Type 2** | Schedule rules change; track history |
 | `JOBPLAN` / `JPLABOR` / `JPMATERIAL` | **SCD Type 2** | Templates evolve |
 | `FAILURECODE` | **Materialized View** | Slow-changing taxonomy; full refresh is fine |
 | `FAILUREREPORT` | **Streaming Table, append-only** | Per-WO record, written once |
-| `ASSET METER` | **SCD Type 2** | Meter definitions can change limits |
+| `ASSETMETER` | **SCD Type 2** | Meter definitions can change limits |
 | `METERREADING` | **Streaming Table, append-only** | High-volume time series |
 | `COMPANIES`, `LABOR`, `PERSON`, `CRAFT` | **SCD Type 1 or 2** | Master data; SCD2 if history matters |
 | `plusgpermitwork`, `plusgincperson` (O&G) | **Streaming Table + APPLY CHANGES INTO** | Stateful records; idempotent updates |

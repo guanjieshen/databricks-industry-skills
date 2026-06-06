@@ -192,7 +192,8 @@ measures:
     expr: SUM(planned_labor_hours)
     display_name: Planned Labor Hours
     comment: >-
-      SUM(JPLABOR.LABORHRS) across forecast PMs. Mirrors the pm_workload_hours
+      SUM(JPLABOR.LABORHRS * COALESCE(QUANTITY, 1)) across forecast PMs (QUANTITY
+      = resources per line). Mirrors the pm_workload_hours
       Trusted UDF. Slice by craft via v_pm_workload_by_craft (sibling metric
       view). Pair with maximo-labor-resources capacity for workload-vs-capacity
       gap analytics.

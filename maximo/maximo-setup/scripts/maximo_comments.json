@@ -49,16 +49,23 @@
     }
   },
   "ASSETMETER": {
-    "table_comment": "Meter definitions per asset — corrosion thickness gauges, vibration channels, runtime hours, etc. Readings live in METERREADING.",
+    "table_comment": "Meter definitions per asset — corrosion thickness gauges, vibration channels, runtime hours, etc. Readings live in METERREADING. Meter type is a property of the METER definition, not stored here. Condition-monitoring warn/action limits live on MEASUREPOINT.",
     "columns": {
       "ASSETNUM": "FK to ASSET.ASSETNUM.",
       "SITEID": "Composite with ASSETNUM.",
-      "METERNAME": "Meter identifier (e.g. UT_THICKNESS, VIB_VEL_HORIZ).",
-      "METERTYPE": "Type of measurement (CONTINUOUS, GAUGE, CHARACTERISTIC).",
-      "WARNLIMITLO": "Low warning threshold.",
-      "WARNLIMITHI": "High warning threshold.",
-      "ACTIONLIMITLO": "Low action threshold (triggers WO).",
-      "ACTIONLIMITHI": "High action threshold (triggers WO)."
+      "METERNAME": "Meter identifier (e.g. UT_THICKNESS, VIB_VEL_HORIZ)."
+    }
+  },
+  "MEASUREPOINT": {
+    "table_comment": "Condition-monitoring measurement points — per-asset meter points with warning/action limits that trigger PM or WO generation when breached. Readings flow in via METERREADING against the associated meter.",
+    "columns": {
+      "ASSETNUM": "FK to ASSET.ASSETNUM.",
+      "SITEID": "Composite with ASSETNUM.",
+      "METERNAME": "FK to ASSETMETER — the meter this measurement point monitors.",
+      "LOWERWARNING": "Low warning threshold.",
+      "UPPERWARNING": "High warning threshold.",
+      "LOWERACTION": "Low action threshold (triggers WO).",
+      "UPPERACTION": "High action threshold (triggers WO)."
     }
   },
   "METERREADING": {
@@ -137,8 +144,7 @@
       "CRAFT": "Default craft (FK to CRAFT).",
       "SKILLLEVEL": "Default skill level.",
       "STATUS": "ACTIVE or INACTIVE. Only ACTIVE can be assigned new work.",
-      "VENDOR": "FK to COMPANIES — populated for contractor labor (most common contractor flag).",
-      "OUTSIDELABOR": "1 if outside (vendor) labor — alternate contractor flag.",
+      "VENDOR": "FK to COMPANIES — populated for contractor labor (the contractor flag; there is no LABOR.OUTSIDELABOR column).",
       "CALNUM": "Default calendar (FK to CALENDAR).",
       "SHIFTNUM": "Default shift."
     }
@@ -203,23 +209,23 @@
       "STATUS": "ACTIVE or INACTIVE."
     }
   },
-  "CREW": {
-    "table_comment": "Crew master. Crews are time-bound groupings of labor — see CREWLABOR for membership.",
+  "AMCREW": {
+    "table_comment": "Crew master. Crews are time-bound groupings of labor — see AMCREWLABOR for membership. Keyed on (ORGID, AMCREW).",
     "columns": {
-      "CREWID": "Crew identifier.",
+      "AMCREW": "Crew identifier (business key, unique within ORGID).",
       "ORGID": "Composite.",
-      "CREWTYPE": "FK to CREWTYPE (required craft mix).",
+      "CREWTYPE": "FK to the crew-type master AMCREWT (required craft mix).",
       "STATUS": "ACTIVE or INACTIVE.",
       "BASELOCATION": "Home location."
     }
   },
-  "CREWLABOR": {
-    "table_comment": "Crew composition. Time-bounded — STARTDATE/ENDDATE define membership window. For current crew, filter STARTDATE <= current_date() AND (ENDDATE IS NULL OR ENDDATE > current_date()).",
+  "AMCREWLABOR": {
+    "table_comment": "Crew composition. Time-bounded — EFFECTIVEDATE/ENDDATE define membership window. For current crew, filter EFFECTIVEDATE <= current_date() AND (ENDDATE IS NULL OR ENDDATE > current_date()). Keyed on AMCREW.",
     "columns": {
-      "CREWID": "FK to CREW.",
+      "AMCREW": "FK to AMCREW.",
       "ORGID": "Composite.",
       "LABORCODE": "FK to LABOR — one row per labor member.",
-      "STARTDATE": "Membership start.",
+      "EFFECTIVEDATE": "Membership start.",
       "ENDDATE": "Membership end (NULL = current).",
       "POSITION": "Crew position (lead, member, etc.)."
     }
@@ -243,15 +249,14 @@
     }
   },
   "WORKPERIOD": {
-    "table_comment": "Specific work periods per calendar — shifts, days off, holidays. Often sparsely populated — probe coverage (MIN/MAX startdate) before claiming 'we have capacity for X'.",
+    "table_comment": "Specific work periods per calendar — one row per shift per work date. Often sparsely populated — probe coverage (MIN/MAX shiftstart) before claiming 'we have capacity for X'.",
     "columns": {
       "CALNUM": "FK to CALENDAR.",
-      "ORGID": "Composite.",
+      "SITEID": "Composite.",
       "SHIFTNUM": "Shift identifier.",
-      "STARTDATE": "Period start (date+time).",
-      "ENDDATE": "Period end.",
-      "HOURS": "Available hours in the period.",
-      "PERIODTYPE": "WORK, HOLIDAY, EXCEPTION, etc."
+      "WORKDATE": "The calendar date this work period falls on.",
+      "SHIFTSTART": "Shift start (date+time).",
+      "SHIFTEND": "Shift end (date+time)."
     }
   },
   "ASSIGNMENT": {

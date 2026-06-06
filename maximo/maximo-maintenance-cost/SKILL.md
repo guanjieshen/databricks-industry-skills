@@ -8,8 +8,8 @@ description: |
   contractor/vendor spend, cost-of-failure, cost-per-operating-hour, bad-actor
   cost ranking, and labor regular-vs-premium decomposition. Tables/columns:
   WORKORDER (ESTLABCOST/ESTMATCOST/ACTLABCOST/ACTMATCOST/ACTSERVCOST/ACTTOOLCOST/
-  WOCURRENCY/PMNUM/WORKTYPE), LABTRANS, MATUSETRANS, WPLABOR, WPMATERIAL,
-  COSTHIST, COMPANIES. Triggers on: "maintenance cost", "cost per asset",
+  WOCURRENCY/PMNUM/WORKTYPE), LABTRANS, MATUSETRANS, SERVRECTRANS, TOOLTRANS,
+  WPLABOR, WPMATERIAL, COMPANIES. Triggers on: "maintenance cost", "cost per asset",
   "ACTLABCOST", "ACTMATCOST", "cost variance", "budget vs actual", "PM vs CM
   cost", "contractor spend", "cost of failure", "cost trend", "spend by site",
   "labor cost", "material cost", "overtime cost", "cost rollup".
@@ -132,8 +132,8 @@ Resolution priority — pick the first that answers the request:
 ## What's in this skill
 
 - [schema.md](schema.md) — load when you need WORKORDER cost columns, LABTRANS,
-  MATUSETRANS, WPLABOR/WPMATERIAL, COSTHIST, COMPANIES/LABOR contractor context,
-  or cardinalities.
+  MATUSETRANS, SERVRECTRANS/TOOLTRANS, WPLABOR/WPMATERIAL, COMPANIES/LABOR
+  contractor context, or cardinalities.
 - [gotchas.md](gotchas.md) — load before writing any cost SQL: header-vs-
   transaction reconciliation, parent/child non-rollup, follow-up non-rollup,
   currency, WO-without-asset, labor decomposition, contractor labor, material

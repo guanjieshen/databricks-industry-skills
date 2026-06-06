@@ -77,19 +77,22 @@ LEFT JOIN :catalog.:silver_schema.invcost c
 -- v_stock_movement
 -- MATUSETRANS aggregated to (item, storeroom, week) grain for trending analytics.
 -- Nets ISSUE + RETURN; excludes TRANSFER and ADJUSTMENT.
+-- QUANTITY (and LINECOST) are SIGNED in MATUSETRANS: issues positive, returns
+-- negative (schema.md). So net consumption = SUM(quantity) over the filtered
+-- ISSUE+RETURN set — returns already carry a negative sign and net themselves
+-- out. Do NOT subtract RETURN explicitly: that would double-flip the sign and
+-- make a return INCREASE net consumption.
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE VIEW :catalog.:gold_schema.v_stock_movement
-COMMENT 'Net consumption per (item, storeroom, week). ISSUE - RETURN. Excludes TRANSFER and ADJUSTMENT.'
+COMMENT 'Net consumption per (item, storeroom, week). QUANTITY/LINECOST are signed (issues positive, returns negative); net consumption = SUM(quantity). Filters to ISSUE+RETURN; excludes TRANSFER and ADJUSTMENT.'
 AS
 SELECT
     itemnum,
     location,
     siteid,
     date_trunc('WEEK', transdate)                         AS week_starting,
-    SUM(CASE WHEN issuetype = 'ISSUE'  THEN quantity ELSE 0 END)
-      - SUM(CASE WHEN issuetype = 'RETURN' THEN quantity ELSE 0 END) AS net_consumed,
-    SUM(CASE WHEN issuetype = 'ISSUE'  THEN linecost ELSE 0 END)
-      - SUM(CASE WHEN issuetype = 'RETURN' THEN linecost ELSE 0 END) AS net_cost,
+    SUM(quantity)                                         AS net_consumed,
+    SUM(linecost)                                         AS net_cost,
     COUNT(DISTINCT wonum)                                 AS distinct_wos
 FROM :catalog.:silver_schema.matusetrans
 WHERE issuetype IN ('ISSUE', 'RETURN')

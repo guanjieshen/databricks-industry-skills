@@ -50,11 +50,31 @@ IBM's Maximo O&G application has its own specific formula displayed in the UI, d
 
 | Definition | Numerator | Denominator |
 |---|---|---|
-| **SMRP** | PMs completed within 10% tolerance window | PMs scheduled |
+| **SMRP** | PMs completed within ±10% of the PM **interval** | PMs scheduled |
 | **Strict on-time** | PMs completed by effective due date | PMs with due date in period |
 | **Customer-specific** | (varies) | (varies) |
 
-The default in `metric_udfs.sql` is SMRP. If the customer uses a different definition, register a customer-specific UDF alongside (with a customer-prefixed name).
+**What the shipped `pm_compliance` UDF actually does — and why it is NOT pure SMRP.**
+The SMRP-canonical "on-time" window is *±10% of the PM interval* — i.e. a per-PM
+tolerance that scales with frequency (≈3 days for a monthly PM, ≈36 days for an
+annual PM). Computing that correctly requires the per-PM frequency
+(`PM.FREQUENCY` + `FREQUNIT`) and a unit conversion to days, and `FREQUNIT` can
+be non-time-based (`MILES`, `READINGS`) with no day equivalent (see gotcha 2f).
+That cannot be expressed honestly in a single-statement UDF.
+
+So the shipped UDF instead takes an explicit **`grace_days INT`** parameter and
+measures "completed within `grace_days` after the effective due date" — a FIXED
+grace window, not a 10%-of-interval window. A single fixed grace (the old UDF
+hard-coded 30 days) is wildly wrong across mixed frequencies: 30 days is far more
+than 10% of a weekly PM and far less than 10% of an annual PM, so a flat value
+silently misreports compliance for a metric that is certified as a Trusted asset.
+
+To approximate SMRP, call the UDF **per homogeneous PM-frequency cohort**, passing
+`grace_days` = 10% of that cohort's interval in days (e.g. 3 for monthly, 36 for
+annual). For a true per-PM 10%-of-interval definition, register a customer-specific
+variant that joins `PM.FREQUENCY`/`FREQUNIT` and converts to days for the
+time-based units. If the customer uses a different definition entirely, register a
+customer-specific UDF alongside (with a customer-prefixed name).
 
 ## 2a. The effective due date is `COALESCE(EXTDATE, NEXTDATE)` — not just `NEXTDATE`
 
@@ -103,8 +123,7 @@ SELECT w.*
 FROM :catalog.:silver_schema.workorder w
 JOIN :catalog.:silver_schema.pmancestor pa
     ON pa.pmnum = w.pmnum AND pa.siteid = w.siteid
-WHERE pa.ancestor = 'PUMP-MASTER-001'
-  AND pa.ancestor_siteid = w.siteid;
+WHERE pa.ancestor = 'PUMP-MASTER-001';
 ```
 
 If the customer's Bronze ingestion didn't materialize `PMANCESTOR`, fall back to a recursive CTE on `PM.PARENT`.
@@ -184,7 +203,7 @@ If the customer wants stricter accounting, register a custom variant.
 
 `METERREADING` is high-volume — joining it to `WORKORDER` without windowing produces millions of rows. Common pattern: aggregate readings first (daily / weekly), then join to events.
 
-Threshold-exceedance is also customer-specific — `WARNLIMITHI` / `ACTIONLIMITHI` are configurable per meter and may be unset.
+Threshold-exceedance is also customer-specific — the Condition Monitoring limits (`MEASUREPOINT.UPPERWARNING` / `UPPERACTION` / `LOWERWARNING` / `LOWERACTION`) are configurable per point and may be unset (`ASSETMETER` itself has no limit columns).
 
 ## 7. "Bad actor" definitions
 

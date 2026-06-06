@@ -124,7 +124,7 @@ SELECT
     failure_description,         -- maintenance failure, NOT the inspection finding (gotcha 12)
     linked_record_id,
     linked_record_class,
-    relationship
+    linked_relate_type           -- core RELATEDRECORD uses RELATETYPE, NOT a column named RELATIONSHIP; confirm PLUSG columns in MAXATTRIBUTE
 FROM :catalog.:gold_schema.v_inspection_findings
 WHERE actfinish >= add_months(current_date(), -12)
   AND linked_record_class = 'INCIDENT'

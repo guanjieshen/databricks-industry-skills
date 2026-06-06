@@ -65,6 +65,7 @@ TABLE_MODULE_MAP = {
     # Asset Management
     "ASSET": "asset_management",
     "ASSETMETER": "asset_integrity",
+    "MEASUREPOINT": "asset_integrity",
     "METERREADING": "asset_integrity",
     "LOCATIONS": "asset_management",
     "LOCHIERARCHY": "asset_hierarchy",
@@ -99,8 +100,8 @@ TABLE_MODULE_MAP = {
     "QUALIFICATION": "labor_resources",
     "CERTIFICATION": "labor_resources",
     "QUALPERSON": "labor_resources",
-    "CREW": "labor_resources",
-    "CREWLABOR": "labor_resources",
+    "AMCREW": "labor_resources",
+    "AMCREWLABOR": "labor_resources",
     "CALENDAR": "labor_resources",
     "WORKPERIOD": "labor_resources",
     "ASSIGNMENT": "labor_resources",
