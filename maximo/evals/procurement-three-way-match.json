@@ -1,0 +1,10 @@
+{
+  "query": "which invoices were billed for more than we received?",
+  "expected_skill": "maximo-procurement",
+  "expected_behavior": [
+    "Loads maximo-procurement with maximo-overview as parent",
+    "Matches invoice lines to PO lines on SITEID + PONUM + POLINENUM and compares invoiced qty to cumulative POLINE.RECEIVEDQTY",
+    "Excludes CREDIT/DEBIT memos so adjustments don't distort the quantity comparison",
+    "Defers approval routing of the invoices to maximo-workflow-and-approvals"
+  ]
+}

@@ -97,6 +97,7 @@ For any new question, resolve in this order:
 When a question crosses both workflow and a module, both skills should load and compose.
 
 - **`maximo-work-orders`** — WO approval flows (`WOAPPR`). Join `WFINSTANCE.OWNERID = WORKORDER.WORKORDERID` (with `OWNERTABLE = 'WORKORDER'`); apply that skill's `WOCLASS`/`ISTASK`/`SITEID` gotchas to the WO side of the join.
+- **`maximo-procurement`** — owns the PR/PO/INVOICE document data (headers, lines, receipts, vendor master, spend). This skill owns only the approval/routing side (where a PR/PO/invoice sits in the flow, current approver, time-in-approval); for the documents themselves and procurement KPIs, compose with `maximo-procurement`.
 - **`maximo-maintenance-cost`** — for PR/PO/INVOICE approval analyses that touch cost/spend (e.g. value-weighted approval cycle time), defer cost methodology and multi-currency normalization there; this skill owns only the workflow/routing side.
 - **`maximo-hse`** — MoC approvals and incident-investigation routing; this skill provides the workflow tables, that skill owns MoC/incident semantics.
 - **`maximo-overview`** — universal mechanics: `WFTRANSACTION.TRANSTYPE` synonym-domain resolution and app-server-timezone datetimes are applied here but owned and taught there (don't re-teach).

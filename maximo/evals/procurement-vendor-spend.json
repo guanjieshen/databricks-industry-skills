@@ -1,0 +1,10 @@
+{
+  "query": "show me total spend by vendor this year",
+  "expected_skill": "maximo-procurement",
+  "expected_behavior": [
+    "Loads maximo-procurement with maximo-overview as parent",
+    "Joins the vendor master COMPANIES on VENDOR + ORGID (vendor is org-scoped)",
+    "Sums a deliberately-chosen cost basis (LINECOST pretax vs LOADEDCOST), and excludes REVISD revision-history rows",
+    "Notes credit/debit memos and offers COMPMASTER rollup for enterprise-wide vendor spend"
+  ]
+}

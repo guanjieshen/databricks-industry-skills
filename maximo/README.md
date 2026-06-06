@@ -42,6 +42,7 @@ Neither persona is a Maximo specialist.
 | [`maximo-reliability`](./maximo-reliability/) | MTBF / MTTR / PM compliance / failure-mode analysis (**backward-looking**) |
 | [`maximo-pm-planning`](./maximo-pm-planning/) | PM forecasting, craft workload, JOBPLAN content management, route grouping (**forward-looking**) |
 | [`maximo-inventory`](./maximo-inventory/) | Reorder alerts, stock positions, dead stock, parts availability for WOs, ABC classification |
+| [`maximo-procurement`](./maximo-procurement/) | Purchasing — PR/PO/INVOICE + receipts + vendor master: open PO backlog, vendor spend, PO cycle time, three-way match, on-time delivery |
 | [`maximo-maintenance-cost`](./maximo-maintenance-cost/) | Cost-per-asset, budget vs actual, cost variance, PM-vs-CM cost, contractor spend |
 | [`maximo-labor-resources`](./maximo-labor-resources/) | Labor masters, crews, qualifications, shift calendars, capacity — composes with pm-planning for workload-vs-capacity |
 | [`maximo-asset-hierarchy`](./maximo-asset-hierarchy/) | Location/asset closure tables, classification hierarchies, rollups by region / station / area / system / class |

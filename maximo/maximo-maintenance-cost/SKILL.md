@@ -159,7 +159,7 @@ Resolution priority — pick the first that answers the request:
 - **Don't re-teach universal mechanics** (SITEID, status-synonym, HISTORYFLAG,
   WOCLASS, ISTASK, timezone) — APPLY them and point to `maximo-overview`.
 - **Don't author GL/accounting-period or PO/invoice cost** — out of scope (see
-  below); PO/invoice actuals are procurement's charter.
+  below); PO/invoice actuals are `maximo-procurement`'s charter.
 
 ## Composes with
 
@@ -180,6 +180,7 @@ Resolution priority — pick the first that answers the request:
 - `maximo-asset-hierarchy` — `LOCANCESTOR` closure table for location rollups
   (`v_location_cost_summary`). **DEFER** hierarchy traversal mechanics there.
 - `maximo-pm-planning` — PM-vs-CM cost ratio consumes this skill's UDF.
+- `maximo-procurement` — what was *paid to a vendor* (PO/invoice actuals, vendor spend, price variance). **DEFER** PO/invoice/vendor cost there; this skill is WO-side consumed cost (avg/standard), not procurement spend.
 
 ## What's intentionally out of scope
 
@@ -188,7 +189,7 @@ Resolution priority — pick the first that answers the request:
   needed.
 - **Accounting-period / interface-table transactions** — Maximo's accounting
   integration is via interface tables; out of charter for analytics-side skills.
-- **PO / invoice cost** — that's procurement. This skill stops at WO-side actuals
+- **PO / invoice cost** — that's `maximo-procurement`. This skill stops at WO-side actuals
   (what was consumed at avg/standard cost), not what was paid to a vendor.
 
 ## References
