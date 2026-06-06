@@ -128,11 +128,29 @@ The four ingredients and where each comes from:
 | **Business synonyms** | the `<customer>-maximo-glossary` skill from `maximo-setup` |
 | **Trusted Asset functions** | each module's `metric_udfs.sql` (MTBF/MTTR/PM-compliance/cost) registered as UC functions |
 
-**Step 3 — Instructions.** Draft the general instructions as terse imperative
-rules from the universal gotchas in `maximo-overview` (filter
-`WOCLASS='WORKORDER'`; count `ISTASK=0`; join on `SITEID`; resolve status via
-`SYNONYMDOMAIN`; mind `HISTORYFLAG`; treat datetimes as app-server-timezone) plus
-the synonym mappings from the workspace glossary.
+**Step 3 — Instructions.** Draft the general instructions as a two-part block:
+
+**Part A — Persona opening (FIRST section, always).** Establish *who the Agent is* and *what it cares about* before any technical rule. Without this, Genie answers like a generic SQL bot; with this, it reasons like a Maximo SME. Template:
+
+```markdown
+You are an expert Maximo analyst focused on <domain>. You have a deep
+understanding of <key entities and the customer's deployment>. You care
+about <the outcomes the user cares about — backlog health, reliability,
+permit compliance, cost variance, etc.> and you reason in the user's
+business vocabulary (<key customer terms from the glossary>).
+
+You prefer governed answers: when a Trusted UDF or metric_view measure
+exists for a question, call it (`MEASURE(<measure>)`) rather than
+reinventing the metric inline. When you don't know the customer's
+convention for something (status set / criticality scheme / etc.), ASK
+before guessing.
+```
+
+Scope `<domain>` to the in-scope modules — if the Space spans work-orders + reliability + PM planning, the persona is *"a maintenance reliability analyst"*; if it's HSE-focused, the persona is *"an HSE / safety analyst"*. Match the customer's primary persona from the family README's persona map.
+
+**Part B — Imperative rules.** Then add terse imperative rules from the universal gotchas in `maximo-overview` (filter `WOCLASS='WORKORDER'`; count `ISTASK=0`; join on `SITEID`; resolve status via `SYNONYMDOMAIN`; mind `HISTORYFLAG`; treat datetimes as app-server-timezone) plus the synonym mappings from the workspace glossary.
+
+Order matters: persona opening teaches Genie *how to think*; the rules constrain *what it does*. Reversed (rules first, no persona), Genie applies the rules but doesn't carry the SME mindset into ambiguous questions.
 
 **Step 4 — Trusted Assets.** Register the relevant `metric_udfs.sql` functions
 (substituting the customer catalog.schema), then add them to the Space so Genie

@@ -261,6 +261,73 @@ Maximo (v0.3.0 setup):
 
 Default to "no" unless the customer is single-deployment + wants Maximo facts visible in every turn.
 
+## Optional: write a skill-loading routing block to user instructions (opt-in only, vetted)
+
+**This section runs ONLY when the user explicitly requests it.** Same opt-in + vetted approval pattern as UC comments and the default-instructions facts block above.
+
+### Why this exists
+
+Genie Code's skill auto-discovery has a soft cap on how many skills it evaluates per session — in workspaces with many installed skills, some legitimate matches are missed. The symptom is that Genie answers Maximo questions using *only* the customer's glossary skill (which loads because the description matches customer-specific terms) but skips loading `maximo-overview` + the matching `maximo-<module>` skill. The result: inline SQL that reinvents metrics, ignores the `metric_view.yaml` semantic layer, and misses universal gotchas.
+
+The fix is a **deterministic skill-loading routing block** in the user's `.assistant_instructions.md` (or workspace default instructions, depending on scope). This tells Genie *explicitly* when to load the Maximo skills, bypassing auto-discovery for the cases that matter.
+
+### What the block looks like
+
+```markdown
+## Skill loading — Maximo
+
+For ANY Maximo / EAM / CMMS-related question, ALWAYS load these skills
+before answering:
+
+1. **`maximo-overview`** — universal data model + gotchas. LOAD FIRST.
+2. **`<customer>-maximo-glossary`** — customer-specific vocabulary.
+3. **The matching `maximo-<module>` skill** based on the question:
+
+| Question pattern | Skill |
+|---|---|
+| Work-order backlog / aging / completion / labor / status history | `maximo-work-orders` |
+| MTBF / MTTR / PM compliance / failure analysis | `maximo-reliability` |
+| PM forecasting / craft workload / JOBPLAN | `maximo-pm-planning` |
+| Inventory / stockouts / parts / reorder | `maximo-inventory` |
+| Cost / spend / budget vs actual | `maximo-maintenance-cost` |
+| Labor / crew / qualifications / capacity | `maximo-labor-resources` |
+| Hierarchical rollup ("by region" / "by station") | `maximo-asset-hierarchy` |
+| Corrosion / integrity / regulatory inspection / RBI | `maximo-integrity` |
+| HSE / permit-to-work / incidents / TRIR | `maximo-hse` |
+| Workflow / approvals / "stuck in approval" | `maximo-workflow-and-approvals` |
+| Procurement / PO / PR / invoice | `maximo-procurement` |
+| **"Build a dashboard"** | matching module + `databricks-aibi-dashboards` |
+| **"Build a Genie Agent"** | `maximo-genie-space` + modules + `databricks-genie` |
+| Pipeline / Bronze→Silver modeling | `maximo-data-engineering` |
+| "This number looks wrong" | `maximo-data-quality` |
+
+Skills are at: `<skills-root>/maximo-*` (flat top-level, NOT nested under
+`maximo/` — Genie's auto-discovery doesn't recurse into subfolders).
+
+For dashboard builds: do NOT short-circuit Genie Code's "don't search for
+data, immediately call createAsset" pattern without first loading the
+Maximo skills. The `metric_view.yaml` in each module is the governed
+measure layer — call `MEASURE(<measure>)` rather than reinventing metrics
+inline.
+```
+
+Substitute `<customer>-maximo-glossary` with the actual customer glossary name.
+
+### Vetted flow (mirrors Phase 3 and the default-instructions facts block)
+
+1. **Preview** — show the customer the proposed routing block, parameterized for their customer name + glossary skill name. Show diff against existing user instructions if any.
+2. **Unambiguous approval** — same rule: "yes apply" / "go ahead and apply" / equivalent; "looks good" / "okay" is not approval.
+3. **Customer applies** — customer pastes the block into their personal `.assistant_instructions.md` (Workspace Settings → Genie Code → user instructions) themselves. **The setup skill never auto-writes to user instructions.**
+4. **Post-apply verification** — in a fresh Agent-mode chat, ask a Maximo question and confirm the right skills load (visible in the trace). If only the glossary loads, the routing block isn't being honored — diagnose.
+
+### When NOT to write this routing block
+
+- When the workspace has few installed skills (auto-discovery isn't capped, no routing needed).
+- When the customer maintains their own skill-loading conventions and adding a Maximo-specific block would conflict.
+- When customer-managed Genie Code instructions are kept in a different config surface (e.g. team-shared rather than user-scoped) — adapt the placement.
+
+Default to writing the block when (a) the workspace has >20 installed skills and (b) the customer reports any Maximo question hitting only the glossary (not module skills). The auto-discovery cap is the canonical failure mode this block fixes.
+
 ## Re-running (refresh, not rebuild)
 
 A re-run never re-interviews from scratch and never blind-overwrites. When an existing `<customer>-maximo-glossary` is found, **ask the user how they want to re-run** before doing anything else:
