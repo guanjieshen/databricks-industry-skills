@@ -126,7 +126,7 @@ Some Maximo customers have hierarchies 10+ levels deep (especially pipeline oper
 
 ## 8. Network-type systems are graphs, not trees
 
-`SYSTEM.NETWORK = 1` marks a network-type hierarchy (e.g. an electrical network where junctions have multiple parents). Closure tables for network systems can have ambiguous "ancestor" semantics. For network systems, prefer explicit graph traversal (e.g. shortest path) over generic rollups.
+`LOCSYSTEM.NETWORK = 1` marks a network-type hierarchy (e.g. an electrical network where junctions have multiple parents). Closure tables for network systems can have ambiguous "ancestor" semantics. For network systems, prefer explicit graph traversal (e.g. shortest path) over generic rollups.
 
 Most analytics target tree-type systems (`NETWORK = 0`, typically `PRIMARY`). If a customer has network systems, ask before assuming a rollup is meaningful.
 

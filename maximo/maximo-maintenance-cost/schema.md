@@ -7,7 +7,7 @@ For the universal Maximo schema (WORKORDER, ASSET, LOCATIONS) and all universal 
 - `LABTRANS` — labor transactions
 - `MATUSETRANS` — material transactions (cost side)
 - `WPLABOR` / `WPMATERIAL` — planned (estimate) lines
-- `COSTHIST` — per-WO cost history (where enabled)
+- Per-WO cost-transaction history (LABTRANS / MATUSETRANS / SERVRECTRANS / TOOLTRANS)
 - `COMPANIES` — vendor / contractor master
 - `LABOR` — labor master (referenced only)
 - Cardinality summary
@@ -84,13 +84,9 @@ For variance analysis (estimate vs actual):
 
 These exist when the WO has been planned. Compare `SUM(WPLABOR.LINECOST)` vs `SUM(LABTRANS.LINECOST)` for variance.
 
-## `COSTHIST` — per-WO cost history (where enabled)
+## Per-WO cost-transaction history
 
-Not all customers populate `COSTHIST`. When present, it logs cost transactions per WO over time (useful for in-flight cost trending). Usually:
-- One row per (WO, transaction type, transdate)
-- `LINECOST`, `LINECOSTOTHERS`, `LINECOSTHRS`
-
-If absent, use `LABTRANS` + `MATUSETRANS` aggregated.
+There is no stock per-WO cost-history rollup table. The actual WO cost transactions live in the stock transaction tables — `LABTRANS` (labor), `MATUSETRANS` (material), `SERVRECTRANS` (services), and `TOOLTRANS` (tools) — each carrying `LINECOST`. For in-flight cost trending, aggregate these by their transaction dates (`LABTRANS.STARTDATE`, `MATUSETRANS.TRANSDATE`, etc.) rather than assuming a dedicated history table.
 
 ## `COMPANIES` — vendor / contractor master
 
@@ -131,7 +127,6 @@ For analytics that go beyond cost (capacity, qualifications, crew composition), 
 | `WORKORDER` → `MATUSETRANS` | 1 : N |
 | `WORKORDER` → `WPLABOR` | 1 : N |
 | `WORKORDER` → `WPMATERIAL` | 1 : N |
-| `WORKORDER` → `COSTHIST` | 1 : N (where populated) |
 | `LABOR` → `LABTRANS` | 1 : N |
 | `LABOR` → `COMPANIES` (via VENDOR) | N : 1 (when contractor labor) |
 | `WORKORDER` → `ASSET` | N : 1 (cost attribution to asset) |

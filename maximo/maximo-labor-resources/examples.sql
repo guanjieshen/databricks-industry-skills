@@ -95,17 +95,25 @@ ORDER BY wl.week_starting, ABS(gap_hours) DESC;
 -- 5. Vacation impact in next quarter
 -- -----------------------------------------------------------------------------
 -- Trigger: "vacation impact", "planned absence next quarter"
+-- TEMPLATE — PENDING COLUMN VERIFICATION. Planned absences are the NON-WORK rows
+-- of MODAVAIL ("Modify Availability"), isolated by the reason code (RSNCODE
+-- synonym domain). MODAVAIL's exact column names are NOT publicly documented:
+-- the resource key, datetimes, RSNCODE column and hours column below are
+-- PLACEHOLDERS — confirm against MAXATTRIBUTE (object MODAVAIL) and resolve the
+-- non-work reason-code set via SYNONYMDOMAIN before running. MODAVAIL also holds
+-- working-time rows, so the RSNCODE filter is required. See gotchas.md §9.
 SELECT
     a.laborcode,
     COALESCE(p.displayname, a.laborcode)                   AS name,
     l.craft,
-    a.reftype                                              AS absence_type,
+    a.rsncode                                              AS absence_reason,
     a.startdatetime, a.enddatetime,
     a.hours                                                AS absence_hours
-FROM :catalog.:silver_schema.availrefly a
+FROM :catalog.:silver_schema.modavail a
 JOIN :catalog.:silver_schema.labor l USING (laborcode, orgid)
 LEFT JOIN :catalog.:silver_schema.person p ON p.personid = l.personid
-WHERE a.startdatetime BETWEEN current_date()
+WHERE a.rsncode IN ('VAC', 'SICK', 'PERSONAL')   -- non-work rows = absences (confirm codes)
+  AND a.startdatetime BETWEEN current_date()
                           AND current_date() + INTERVAL 90 DAYS
 ORDER BY a.startdatetime, l.craft;
 
@@ -141,13 +149,13 @@ WITH booked AS (
     GROUP BY lt.laborcode
 ),
 available AS (
+    -- Scheduled hours DERIVED from SHIFTSTART/SHIFTEND (no WORKPERIOD.HOURS column).
     SELECT l.laborcode,
-           SUM(wp.hours) AS available_hours
+           SUM((unix_timestamp(wp.shiftend) - unix_timestamp(wp.shiftstart)) / 3600.0) AS available_hours
     FROM :catalog.:silver_schema.labor l
     JOIN :catalog.:silver_schema.workperiod wp
         ON wp.calnum = l.calnum AND wp.shiftnum = l.shiftnum
-       AND wp.periodtype = 'WORK'
-       AND wp.startdate BETWEEN ':window_start' AND ':window_end'
+       AND wp.workdate BETWEEN ':window_start' AND ':window_end'
     GROUP BY l.laborcode
 )
 SELECT
@@ -166,19 +174,19 @@ ORDER BY utilization_pct DESC NULLS LAST;
 -- -----------------------------------------------------------------------------
 -- Trigger: "who's on crew X", "crew composition"
 SELECT
-    cl.crewid,
+    cl.amcrew                                              AS crewid,
     cl.laborcode,
     COALESCE(p.displayname, cl.laborcode)                  AS name,
     l.craft, l.skilllevel,
     cl.position,
-    cl.startdate                                           AS on_crew_since
-FROM :catalog.:silver_schema.crewlabor cl
+    cl.effectivedate                                      AS on_crew_since
+FROM :catalog.:silver_schema.amcrewlabor cl
 JOIN :catalog.:silver_schema.labor l USING (laborcode, orgid)
 LEFT JOIN :catalog.:silver_schema.person p ON p.personid = l.personid
-WHERE cl.crewid = ':crewid'
-  AND cl.startdate <= current_date()
+WHERE cl.amcrew = ':crewid'
+  AND cl.effectivedate <= current_date()
   AND (cl.enddate IS NULL OR cl.enddate > current_date())
-ORDER BY cl.position, cl.startdate;
+ORDER BY cl.position, cl.effectivedate;
 
 
 -- -----------------------------------------------------------------------------

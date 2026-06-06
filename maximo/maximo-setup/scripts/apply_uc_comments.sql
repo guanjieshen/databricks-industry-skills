@@ -92,7 +92,7 @@ ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.ASSET') ALTER COLU
 
 ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.ASSET') ALTER COLUMN `MANUFACTURER` COMMENT 'Manufacturer code (FK to COMPANIES).';
 
-COMMENT ON TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.ASSETMETER') IS 'Meter definitions per asset — corrosion thickness gauges, vibration channels, runtime hours, etc. Readings live in METERREADING.';
+COMMENT ON TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.ASSETMETER') IS 'Meter definitions per asset — corrosion thickness gauges, vibration channels, runtime hours, etc. Readings live in METERREADING. Meter type is a property of the METER definition, not stored here. Condition-monitoring warn/action limits live on MEASUREPOINT.';
 
 ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.ASSETMETER') ALTER COLUMN `ASSETNUM` COMMENT 'FK to ASSET.ASSETNUM.';
 
@@ -100,15 +100,21 @@ ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.ASSETMETER') ALTER
 
 ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.ASSETMETER') ALTER COLUMN `METERNAME` COMMENT 'Meter identifier (e.g. UT_THICKNESS, VIB_VEL_HORIZ).';
 
-ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.ASSETMETER') ALTER COLUMN `METERTYPE` COMMENT 'Type of measurement (CONTINUOUS, GAUGE, CHARACTERISTIC).';
+COMMENT ON TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.MEASUREPOINT') IS 'Condition-monitoring measurement points — per-asset meter points with warning/action limits that trigger PM or WO generation when breached. Readings flow in via METERREADING against the associated meter.';
 
-ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.ASSETMETER') ALTER COLUMN `WARNLIMITLO` COMMENT 'Low warning threshold.';
+ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.MEASUREPOINT') ALTER COLUMN `ASSETNUM` COMMENT 'FK to ASSET.ASSETNUM.';
 
-ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.ASSETMETER') ALTER COLUMN `WARNLIMITHI` COMMENT 'High warning threshold.';
+ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.MEASUREPOINT') ALTER COLUMN `SITEID` COMMENT 'Composite with ASSETNUM.';
 
-ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.ASSETMETER') ALTER COLUMN `ACTIONLIMITLO` COMMENT 'Low action threshold (triggers WO).';
+ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.MEASUREPOINT') ALTER COLUMN `METERNAME` COMMENT 'FK to ASSETMETER — the meter this measurement point monitors.';
 
-ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.ASSETMETER') ALTER COLUMN `ACTIONLIMITHI` COMMENT 'High action threshold (triggers WO).';
+ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.MEASUREPOINT') ALTER COLUMN `LOWERWARNING` COMMENT 'Low warning threshold.';
+
+ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.MEASUREPOINT') ALTER COLUMN `UPPERWARNING` COMMENT 'High warning threshold.';
+
+ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.MEASUREPOINT') ALTER COLUMN `LOWERACTION` COMMENT 'Low action threshold (triggers WO).';
+
+ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.MEASUREPOINT') ALTER COLUMN `UPPERACTION` COMMENT 'High action threshold (triggers WO).';
 
 COMMENT ON TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.METERREADING') IS 'Time-series meter readings against ASSETMETER. Append-only; ordered by READINGDATE.';
 
@@ -210,9 +216,7 @@ ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.LABOR') ALTER COLU
 
 ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.LABOR') ALTER COLUMN `STATUS` COMMENT 'ACTIVE or INACTIVE. Only ACTIVE can be assigned new work.';
 
-ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.LABOR') ALTER COLUMN `VENDOR` COMMENT 'FK to COMPANIES — populated for contractor labor (most common contractor flag).';
-
-ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.LABOR') ALTER COLUMN `OUTSIDELABOR` COMMENT '1 if outside (vendor) labor — alternate contractor flag.';
+ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.LABOR') ALTER COLUMN `VENDOR` COMMENT 'FK to COMPANIES — populated for contractor labor (the contractor flag; there is no LABOR.OUTSIDELABOR column).';
 
 ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.LABOR') ALTER COLUMN `CALNUM` COMMENT 'Default calendar (FK to CALENDAR).';
 
@@ -290,31 +294,31 @@ ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.CERTIFICATION') AL
 
 ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.CERTIFICATION') ALTER COLUMN `STATUS` COMMENT 'ACTIVE or INACTIVE.';
 
-COMMENT ON TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.CREW') IS 'Crew master. Crews are time-bound groupings of labor — see CREWLABOR for membership.';
+COMMENT ON TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.AMCREW') IS 'Crew master. Crews are time-bound groupings of labor — see AMCREWLABOR for membership. Keyed on (ORGID, AMCREW).';
 
-ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.CREW') ALTER COLUMN `CREWID` COMMENT 'Crew identifier.';
+ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.AMCREW') ALTER COLUMN `AMCREW` COMMENT 'Crew identifier (business key, unique within ORGID).';
 
-ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.CREW') ALTER COLUMN `ORGID` COMMENT 'Composite.';
+ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.AMCREW') ALTER COLUMN `ORGID` COMMENT 'Composite.';
 
-ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.CREW') ALTER COLUMN `CREWTYPE` COMMENT 'FK to CREWTYPE (required craft mix).';
+ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.AMCREW') ALTER COLUMN `CREWTYPE` COMMENT 'FK to the crew-type master AMCREWT (required craft mix).';
 
-ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.CREW') ALTER COLUMN `STATUS` COMMENT 'ACTIVE or INACTIVE.';
+ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.AMCREW') ALTER COLUMN `STATUS` COMMENT 'ACTIVE or INACTIVE.';
 
-ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.CREW') ALTER COLUMN `BASELOCATION` COMMENT 'Home location.';
+ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.AMCREW') ALTER COLUMN `BASELOCATION` COMMENT 'Home location.';
 
-COMMENT ON TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.CREWLABOR') IS 'Crew composition. Time-bounded — STARTDATE/ENDDATE define membership window. For current crew, filter STARTDATE <= current_date() AND (ENDDATE IS NULL OR ENDDATE > current_date()).';
+COMMENT ON TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.AMCREWLABOR') IS 'Crew composition. Time-bounded — EFFECTIVEDATE/ENDDATE define membership window. For current crew, filter EFFECTIVEDATE <= current_date() AND (ENDDATE IS NULL OR ENDDATE > current_date()). Keyed on AMCREW.';
 
-ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.CREWLABOR') ALTER COLUMN `CREWID` COMMENT 'FK to CREW.';
+ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.AMCREWLABOR') ALTER COLUMN `AMCREW` COMMENT 'FK to AMCREW.';
 
-ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.CREWLABOR') ALTER COLUMN `ORGID` COMMENT 'Composite.';
+ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.AMCREWLABOR') ALTER COLUMN `ORGID` COMMENT 'Composite.';
 
-ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.CREWLABOR') ALTER COLUMN `LABORCODE` COMMENT 'FK to LABOR — one row per labor member.';
+ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.AMCREWLABOR') ALTER COLUMN `LABORCODE` COMMENT 'FK to LABOR — one row per labor member.';
 
-ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.CREWLABOR') ALTER COLUMN `STARTDATE` COMMENT 'Membership start.';
+ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.AMCREWLABOR') ALTER COLUMN `EFFECTIVEDATE` COMMENT 'Membership start.';
 
-ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.CREWLABOR') ALTER COLUMN `ENDDATE` COMMENT 'Membership end (NULL = current).';
+ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.AMCREWLABOR') ALTER COLUMN `ENDDATE` COMMENT 'Membership end (NULL = current).';
 
-ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.CREWLABOR') ALTER COLUMN `POSITION` COMMENT 'Crew position (lead, member, etc.).';
+ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.AMCREWLABOR') ALTER COLUMN `POSITION` COMMENT 'Crew position (lead, member, etc.).';
 
 COMMENT ON TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.PERSONGROUP') IS 'Named person group. Members in PERSONGROUPTEAM. Used by workflow assignment, paging, on-call rotation. Can nest — beware loops.';
 
@@ -336,21 +340,19 @@ ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.CALENDAR') ALTER C
 
 ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.CALENDAR') ALTER COLUMN `ENDDATE` COMMENT 'Calendar validity end.';
 
-COMMENT ON TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.WORKPERIOD') IS 'Specific work periods per calendar — shifts, days off, holidays. Often sparsely populated — probe coverage (MIN/MAX startdate) before claiming ''we have capacity for X''.';
+COMMENT ON TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.WORKPERIOD') IS 'Specific work periods per calendar — one row per shift per work date. Often sparsely populated — probe coverage (MIN/MAX shiftstart) before claiming ''we have capacity for X''.';
 
 ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.WORKPERIOD') ALTER COLUMN `CALNUM` COMMENT 'FK to CALENDAR.';
 
-ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.WORKPERIOD') ALTER COLUMN `ORGID` COMMENT 'Composite.';
+ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.WORKPERIOD') ALTER COLUMN `SITEID` COMMENT 'Composite.';
 
 ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.WORKPERIOD') ALTER COLUMN `SHIFTNUM` COMMENT 'Shift identifier.';
 
-ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.WORKPERIOD') ALTER COLUMN `STARTDATE` COMMENT 'Period start (date+time).';
+ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.WORKPERIOD') ALTER COLUMN `WORKDATE` COMMENT 'The calendar date this work period falls on.';
 
-ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.WORKPERIOD') ALTER COLUMN `ENDDATE` COMMENT 'Period end.';
+ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.WORKPERIOD') ALTER COLUMN `SHIFTSTART` COMMENT 'Shift start (date+time).';
 
-ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.WORKPERIOD') ALTER COLUMN `HOURS` COMMENT 'Available hours in the period.';
-
-ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.WORKPERIOD') ALTER COLUMN `PERIODTYPE` COMMENT 'WORK, HOLIDAY, EXCEPTION, etc.';
+ALTER TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.WORKPERIOD') ALTER COLUMN `SHIFTEND` COMMENT 'Shift end (date+time).';
 
 COMMENT ON TABLE IDENTIFIER(:catalog || '.' || :silver_schema || '.ASSIGNMENT') IS 'Labor ↔ WO assignment. One row per labor scheduled for specific WO work.';
 

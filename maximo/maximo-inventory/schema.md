@@ -96,14 +96,19 @@ Append-only log of every material movement (issue, transfer, return, adjustment)
 | `LOCATION` | Source storeroom |
 | `SITEID` | Composite |
 | `WONUM` | FK to WORKORDER (if issued to a WO) |
-| `QUANTITY` | Quantity moved (negative for adjustments-down or returns) |
+| `QUANTITY` | Quantity moved — SIGNED: issues positive, returns and adjustments-down negative. Net consumption = `SUM(QUANTITY)` over the ISSUE+RETURN set (do NOT subtract RETURN separately; it already carries a negative sign) |
 | `LINECOST` | Cost of this transaction at the time it happened |
 | `ISSUETYPE` | `ISSUE`, `TRANSFER`, `RETURN`, `ADJUSTMENT` |
 | `TRANSDATE` | When the transaction happened — app-server-timezone, not per-row UTC (see `maximo-overview`); don't assume UTC when bucketing across sites |
 | `CONDITIONCODE` | For rotating items |
 | `TOSTOREROOM` / `TOSITEID` | For `TRANSFER` — destination storeroom |
 
-For "consumption" analytics, filter `ISSUETYPE IN ('ISSUE', 'RETURN')` and net them out. Exclude `TRANSFER` (moves between storerooms, doesn't consume).
+For "consumption" analytics, filter `ISSUETYPE IN ('ISSUE', 'RETURN')` and net via
+`SUM(QUANTITY)` — `QUANTITY` is signed, so issues (positive) and returns (negative)
+net to true consumption in a single SUM. Do NOT compute `SUM(issue) - SUM(return)`:
+returns are already negative, so subtracting them double-flips the sign and makes a
+return *increase* consumption. Exclude `TRANSFER` (moves between storerooms, doesn't
+consume) and `ADJUSTMENT`.
 
 ## `MATRECTRANS` — material receipt transactions
 

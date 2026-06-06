@@ -6,7 +6,7 @@
 - `LOCHIERARCHY` — multi-system parent-child rows
 - `LOCANCESTOR` — location closure table
 - `ASSET` (PARENT column) and `ASSETANCESTOR` — asset closure
-- `SYSTEM` — hierarchy system definitions
+- `LOCSYSTEM` — hierarchy system definitions
 - `CLASSSTRUCTURE` — asset / location classification tree
 - `CLASSSPEC` and `ASSETSPEC` — specs at class and asset level
 - Cardinality summary
@@ -88,7 +88,7 @@ SELECT aa.assetnum FROM assetancestor aa
 WHERE aa.ancestor = 'PMP-SKID-7' AND aa.siteid = 'MAIN-WEST';
 ```
 
-## `SYSTEM` — hierarchy system definitions
+## `LOCSYSTEM` — hierarchy system definitions
 
 Defines the systems a location can belong to. Standard out-of-the-box system is `PRIMARY`. O&G customers often have additional systems (e.g. `PROCESS`, `UTILITY`).
 
@@ -146,7 +146,7 @@ For analytics: "show me all pumps with flow rate > 5000 gpm" → join `ASSETSPEC
 | `LOCATIONS` → `LOCATIONS` (parent/child via PARENT) | self, 1-level |
 | `LOCATIONS` → `LOCHIERARCHY` | 1 : N (one row per system membership) |
 | `LOCATIONS` → `LOCANCESTOR` | 1 : N (one row per ancestor at any depth) |
-| `SYSTEM` → `LOCHIERARCHY` | 1 : N |
+| `LOCSYSTEM` → `LOCHIERARCHY` | 1 : N |
 | `ASSET` → `ASSET` (PARENT) | self, 1-level |
 | `ASSET` → `ASSETANCESTOR` | 1 : N |
 | `CLASSSTRUCTURE` → `CLASSSTRUCTURE` (PARENT) | self, 1-level |

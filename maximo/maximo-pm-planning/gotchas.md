@@ -106,17 +106,35 @@ Customers use different tolerances for "on-time" classification:
 
 The shipped views use **due-bucket** classification (OVERDUE / DUE_30D / DUE_60D / DUE_90D / FUTURE), which is tolerance-independent. If the customer wants on-time compliance bucketing, surface the tolerance question (SKILL.md *Questions to surface first*) and register a customer-specific view. On-time *compliance* (a past measure) belongs to `maximo-reliability`.
 
-## 8. Meter-based PM forecasts depend on `ASSETMETER.AVERAGE`
+## 8. Meter-based PM forecasts depend on `ASSETMETER.AVERAGE` — and cadence lives on `PMMETER`
 
-For meter-based PMs (`FREQUNIT` in `HOURS`, `MILES`, `READINGS`), forecasting uses:
+The meter cadence of a meter-based PM lives on the **`PMMETER`** child table (keyed
+`SITEID/PMNUM/METERNAME`), **not on `PM`**: `PMMETER.METERNAME` is the meter and
+`PMMETER.FREQUENCY` is the recurring meter interval. There is **no `PM.METERNAME`
+column**, and `PM.FREQUENCY` is the *TIME-based* frequency — do not use it as the
+meter interval. Maximo's own estimated next meter-based due date is the
+non-persistent `PMMETER.DATEOFNEXTWO` (computed at runtime, often absent in a Silver
+mirror); `PM.NEXTDATE` is the TIME-based due date, not the meter equivalent.
+
+For meter-based PMs (`FREQUNIT` in `HOURS`, `MILES`, `READINGS`), `PMMETER.FREQUENCY` is a
+**recurring meter interval** (e.g. service every 500 HOURS), *not* an absolute target
+meter value. Forecast to the **next multiple of `PMMETER.FREQUENCY` above `LASTREADING`** —
+the meter units remaining until the next due is `PMMETER.FREQUENCY - MOD(LASTREADING, PMMETER.FREQUENCY)`:
 
 ```
-forecast_next_due ≈ LASTREADINGDATE + (FREQUENCY - LASTREADING) / AVERAGE
+remaining_units   = PMMETER.FREQUENCY - MOD(LASTREADING, PMMETER.FREQUENCY)
+forecast_next_due ≈ LASTREADINGDATE + (remaining_units / AVERAGE)   -- AVERAGE is per-day, so this is days
 ```
 
-`ASSETMETER.AVERAGE` is a Maximo-computed rolling per-day rate. If it's NULL or 0 (new meter, no usage history), the forecast is unknowable — return NULL.
+(This computes the equivalent of Maximo's non-persistent `PMMETER.DATEOFNEXTWO`.)
 
-The shipped `meter_based_pm_forecast` UDF handles this and matches the meter on `ASSETMETER.METERNAME = PM.METERNAME`. Confirm which `METERNAME` is the runtime meter for the deployment (SKILL.md *Questions to surface first*). Don't bake assumptions about non-zero averages into custom queries.
+Using `(PMMETER.FREQUENCY - LASTREADING)` instead is wrong: once cumulative `LASTREADING` exceeds
+one interval, the term goes negative and the forecast collapses to ~now.
+
+`ASSETMETER.AVERAGE` is a Maximo-computed rolling per-day rate. If it's NULL or 0 (new
+meter, no usage history) — or `PMMETER.FREQUENCY` is NULL/0 — the forecast is unknowable, return NULL.
+
+The shipped `meter_based_pm_forecast` UDF handles this: it sources the meter name and interval from `PMMETER` and matches the meter on `ASSETMETER.METERNAME = PMMETER.METERNAME`. Confirm which `METERNAME` is the runtime meter for the deployment (SKILL.md *Questions to surface first*). Don't bake assumptions about non-zero averages into custom queries.
 
 ## 9. JOBPLAN joins are org-scoped, not site-scoped
 
@@ -134,7 +152,8 @@ Joining JOBPLAN children on `SITEID` drops rows; joining on `JPNUM` alone cross-
 The same JOBPLAN can be referenced by many PMs. When summing planned labor for "all PMs in the next 30 days", expand per PM × JOBPLAN line:
 
 ```sql
-SELECT pm.pmnum, jpl.craft, jpl.laborhrs AS labor_hours_per_instance
+SELECT pm.pmnum, jpl.craft,
+       jpl.laborhrs * COALESCE(jpl.quantity, 1) AS labor_hours_per_instance  -- QUANTITY = resources per line
 FROM :catalog.:silver_schema.pm pm
 JOIN :catalog.:silver_schema.jplabor jpl
   ON jpl.jpnum = pm.jpnum AND jpl.orgid = pm.orgid AND jpl.__END_AT IS NULL
@@ -148,4 +167,4 @@ For "JOBPLAN edit impact" ("if I change `JP-PUMP-3MO` labor hours, what PMs are 
 
 ## 11. Resource capacity content is owned by `maximo-labor-resources`
 
-`CALENDAR` / `WORKPERIOD` / `AVAILREFLY` define crew availability — they're labor-master concerns, owned by [`../maximo-labor-resources/`](../maximo-labor-resources/). For workload-vs-capacity questions, **compose both skills**: pm-planning provides forecast workload (`v_pm_workload_by_craft`, `pm_workload_hours` UDF); labor-resources provides capacity (`v_crew_capacity`, `crew_capacity_hours` UDF) and the half-populated-coverage probe. Don't re-document the capacity master here.
+`CALENDAR` / `WORKPERIOD` / `MODAVAIL` define crew availability — they're labor-master concerns, owned by [`../maximo-labor-resources/`](../maximo-labor-resources/). For workload-vs-capacity questions, **compose both skills**: pm-planning provides forecast workload (`v_pm_workload_by_craft`, `pm_workload_hours` UDF); labor-resources provides capacity (`v_crew_capacity`, `crew_capacity_hours` UDF) and the half-populated-coverage probe. Don't re-document the capacity master here.

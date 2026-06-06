@@ -12,8 +12,26 @@ COMMENT 'Trusted-asset SQL functions for Maximo labor + capacity metrics';
 -- crew_capacity_hours — total available craft-hours for a crew × week
 -- -----------------------------------------------------------------------------
 -- Sums WORKPERIOD scheduled hours across current crew members minus planned
--- absences (AVAILREFLY) overlapping the week. Returns 0 if WORKPERIOD coverage
--- is missing for the week — caller should probe coverage separately.
+-- absences (MODAVAIL non-work rows) overlapping the week. Returns 0 if
+-- WORKPERIOD coverage is missing for the week — caller should probe coverage
+-- separately.
+--
+-- TEMPLATE — PENDING COLUMN VERIFICATION. The `absent` CTE references MODAVAIL
+-- ("Modify Availability"), whose exact column names are NOT publicly documented.
+-- The resource key, start datetime, reason-code column (`rsncode`) and affected-
+-- hours column (`hours`) below are PLACEHOLDERS, and the non-work reason-code set
+-- ('VAC','SICK','PERSONAL') that isolates absences (RSNCODE synonym domain) must
+-- be confirmed against MAXATTRIBUTE (object MODAVAIL) and SYNONYMDOMAIN in this
+-- deployment before registering as a Trusted UDF. See gotchas.md §9.
+--
+-- CONTRACTOR CAVEAT: scheduled capacity is derived from each member's default
+-- CALNUM/SHIFTNUM via WORKPERIOD. Contractor labor frequently has NULL
+-- CALNUM/SHIFTNUM (gotcha 1), so it contributes ZERO WORKPERIOD hours here. This
+-- function therefore measures CALENDAR-DRIVEN capacity only; contractor hours
+-- are not represented unless the deployment populates their calendars. The
+-- `scheduled` join intentionally does not gate out those members (they simply
+-- contribute no rows), but be aware the returned number excludes calendar-less
+-- contractors rather than erroring.
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION :catalog.:metrics_schema.crew_capacity_hours(
     crew_id STRING,
@@ -22,34 +40,37 @@ CREATE OR REPLACE FUNCTION :catalog.:metrics_schema.crew_capacity_hours(
     craft_filter STRING COMMENT 'Craft code. NULL for total across all crafts.'
 )
 RETURNS DOUBLE
-COMMENT 'Trusted metric: available crew-hours in a week, net of planned absences. Aggregates current CREWLABOR × WORKPERIOD minus AVAILREFLY overlap.'
+COMMENT 'Trusted metric (TEMPLATE pending MODAVAIL column verification): calendar-driven available crew-hours in a week, net of planned absences. Aggregates current AMCREWLABOR x WORKPERIOD (hours derived from SHIFTSTART/SHIFTEND) minus MODAVAIL non-work overlap. Excludes calendar-less contractor labor.'
 RETURN (
     WITH current_members AS (
         SELECT cl.laborcode, cl.orgid
-        FROM :catalog.:silver_schema.crewlabor cl
-        WHERE cl.crewid = crew_id AND cl.orgid = org_id
-          AND cl.startdate <= week_start
+        FROM :catalog.:silver_schema.amcrewlabor cl
+        WHERE cl.amcrew = crew_id AND cl.orgid = org_id
+          AND cl.effectivedate <= week_start
           AND (cl.enddate IS NULL OR cl.enddate > week_start)
     ),
     scheduled AS (
-        SELECT SUM(wp.hours) AS hours
+        -- Scheduled hours DERIVED from SHIFTSTART/SHIFTEND (no WORKPERIOD.HOURS).
+        SELECT SUM((unix_timestamp(wp.shiftend) - unix_timestamp(wp.shiftstart)) / 3600.0) AS hours
         FROM current_members cm
         JOIN :catalog.:silver_schema.labor l USING (laborcode, orgid)
         JOIN :catalog.:silver_schema.workperiod wp
             ON wp.calnum = l.calnum AND wp.shiftnum = l.shiftnum
-           AND wp.periodtype = 'WORK'
-           AND wp.startdate >= week_start
-           AND wp.startdate <  week_start + INTERVAL 7 DAYS
+           AND wp.workdate >= week_start
+           AND wp.workdate <  week_start + INTERVAL 7 DAYS
         WHERE craft_filter IS NULL OR l.craft = craft_filter
     ),
+    -- absent: TEMPLATE — replace `ma.*` placeholders and the RSNCODE set with
+    -- verified MODAVAIL columns / this deployment's non-work reason codes.
     absent AS (
-        SELECT SUM(ar.hours) AS hours
+        SELECT SUM(ma.hours) AS hours
         FROM current_members cm
         JOIN :catalog.:silver_schema.labor l USING (laborcode, orgid)
-        JOIN :catalog.:silver_schema.availrefly ar
-            ON ar.laborcode = cm.laborcode AND ar.orgid = cm.orgid
-           AND ar.startdatetime >= week_start
-           AND ar.startdatetime <  week_start + INTERVAL 7 DAYS
+        JOIN :catalog.:silver_schema.modavail ma
+            ON ma.laborcode = cm.laborcode AND ma.orgid = cm.orgid
+           AND ma.rsncode IN ('VAC', 'SICK', 'PERSONAL')   -- non-work rows = absences
+           AND ma.startdatetime >= week_start
+           AND ma.startdatetime <  week_start + INTERVAL 7 DAYS
         WHERE craft_filter IS NULL OR l.craft = craft_filter
     )
     SELECT COALESCE(s.hours, 0) - COALESCE(a.hours, 0)
@@ -96,13 +117,13 @@ RETURNS DOUBLE
 COMMENT 'Trusted metric: % of scheduled WORKPERIOD hours that were booked as LABTRANS in the window. NULL if no scheduled hours.'
 RETURN (
     WITH scheduled AS (
-        SELECT SUM(wp.hours) AS hours
+        -- Scheduled hours DERIVED from SHIFTSTART/SHIFTEND (no WORKPERIOD.HOURS).
+        SELECT SUM((unix_timestamp(wp.shiftend) - unix_timestamp(wp.shiftstart)) / 3600.0) AS hours
         FROM :catalog.:silver_schema.labor l
         JOIN :catalog.:silver_schema.workperiod wp
             ON wp.calnum = l.calnum AND wp.shiftnum = l.shiftnum
-           AND wp.periodtype = 'WORK'
         WHERE l.laborcode = labor_code AND l.orgid = org_id
-          AND wp.startdate BETWEEN window_start AND window_end
+          AND wp.workdate BETWEEN window_start AND window_end
     ),
     booked AS (
         SELECT SUM(lt.regularhrs + COALESCE(lt.premiumpayhours, 0)) AS hours
@@ -146,6 +167,15 @@ RETURN (
 -- -----------------------------------------------------------------------------
 -- vacation_impact_hours — total scheduled absence hours for a labor in window
 -- -----------------------------------------------------------------------------
+-- TEMPLATE — PENDING COLUMN VERIFICATION. Reads MODAVAIL ("Modify Availability")
+-- non-work rows. MODAVAIL's exact columns are NOT publicly documented: the
+-- resource key, start datetime, reason-code column (`rsncode`) and affected-hours
+-- column (`hours`) below are PLACEHOLDERS, and the non-work reason-code set
+-- ('VAC','SICK','PERSONAL') must be confirmed against MAXATTRIBUTE (object
+-- MODAVAIL) and SYNONYMDOMAIN before registering. MODAVAIL holds both work and
+-- non-work rows — the RSNCODE filter is what isolates planned absences. See
+-- gotchas.md §9.
+-- -----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION :catalog.:metrics_schema.vacation_impact_hours(
     labor_code STRING,
     org_id STRING,
@@ -153,12 +183,13 @@ CREATE OR REPLACE FUNCTION :catalog.:metrics_schema.vacation_impact_hours(
     window_end TIMESTAMP
 )
 RETURNS DOUBLE
-COMMENT 'Trusted metric: total scheduled absence hours (AVAILREFLY) for a labor record in a window.'
+COMMENT 'Trusted metric (TEMPLATE pending MODAVAIL column verification): total scheduled absence hours (MODAVAIL non-work rows) for a labor record in a window.'
 RETURN (
-    SELECT COALESCE(SUM(ar.hours), 0)
-    FROM :catalog.:silver_schema.availrefly ar
-    WHERE ar.laborcode = labor_code AND ar.orgid = org_id
-      AND ar.startdatetime BETWEEN window_start AND window_end
+    SELECT COALESCE(SUM(ma.hours), 0)
+    FROM :catalog.:silver_schema.modavail ma
+    WHERE ma.laborcode = labor_code AND ma.orgid = org_id
+      AND ma.rsncode IN ('VAC', 'SICK', 'PERSONAL')   -- non-work rows = absences
+      AND ma.startdatetime BETWEEN window_start AND window_end
 );
 
 

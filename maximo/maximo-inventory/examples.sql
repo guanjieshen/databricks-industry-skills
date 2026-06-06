@@ -73,6 +73,9 @@ ORDER BY on_hand DESC;
 -- 3. Top consumed parts last quarter
 -- -----------------------------------------------------------------------------
 -- Trigger: "most-used parts", "top consumed items"
+-- QUANTITY/LINECOST are SIGNED (issues positive, returns negative; schema.md), so
+-- net consumption = SUM(quantity) over the filtered ISSUE+RETURN set. Returns
+-- already carry a negative sign and net themselves out — do NOT subtract RETURN.
 SELECT
     t.itemnum,
     i.description,
@@ -221,6 +224,9 @@ ORDER BY component_cost_contribution DESC;
 -- -----------------------------------------------------------------------------
 -- Trigger: "usage trend for item X", "weekly consumption"
 -- TRANSDATE is app-server-timezone; week buckets follow that TZ, not UTC.
+-- QUANTITY/LINECOST are SIGNED (issues positive, returns negative; schema.md), so
+-- net consumption = SUM(quantity) over the filtered ISSUE+RETURN set — returns
+-- net themselves out. Do NOT subtract RETURN.
 SELECT
     date_trunc('WEEK', transdate)            AS week_starting,
     SUM(quantity)                            AS quantity_consumed,

@@ -6,17 +6,16 @@
 - 2. Contractor identification varies by customer
 - 3. `CALENDAR` / `WORKPERIOD` coverage probe
 - 4. `QUALPERSON.EXPIRYDATE` — filter to current
-- 5. `LABREPHIST` vs `LABTRANS` — pick the right one for the question
-- 6. `LABORCRAFTRATE` currency aggregation
-- 7. Crew membership is time-bounded
-- 8. Person-group nesting can loop
-- 9. Employee + contractor blends in the same crew
-- 10. `AVAILREFLY` doesn't always sync with `WORKPERIOD`
-- 11. Status columns are synonym domains (defer to overview)
+- 5. `LABORCRAFTRATE` currency aggregation
+- 6. Crew membership is time-bounded
+- 7. Person-group nesting can loop
+- 8. Employee + contractor blends in the same crew
+- 9. `MODAVAIL` (availability mods) doesn't always sync with `WORKPERIOD`
+- 10. Status columns are synonym domains (defer to overview)
 
-The first 5 are also inline in `SKILL.md`. Reproduced here in full with the additional gotchas (6-11) for queries that go deeper.
+The first 4 are also inline in `SKILL.md` (along with the MODAVAIL and LABTRANS facts). Reproduced here in full with the additional gotchas (5-10) for queries that go deeper.
 
-> **Universal mechanics live in `maximo-overview`** — don't re-derive them here. This skill's SQL must still APPLY them: `SITEID` in every cross-table join (overview gotcha 4), `SYNONYMDOMAIN` resolution for status sets (gotcha 5), `HISTORYFLAG = 0` awareness when joining to `WORKORDER`/`TICKET` (gotcha 6), and app-server-timezone datetimes when bucketing `WORKPERIOD`/`AVAILREFLY` by day/week across sites (gotcha 7).
+> **Universal mechanics live in `maximo-overview`** — don't re-derive them here. This skill's SQL must still APPLY them: `SITEID` in every cross-table join (overview gotcha 4), `SYNONYMDOMAIN` resolution for status sets (gotcha 5), `HISTORYFLAG = 0` awareness when joining to `WORKORDER`/`TICKET` (gotcha 6), and app-server-timezone datetimes when bucketing `WORKPERIOD`/`MODAVAIL` by day/week across sites (gotcha 7).
 
 ## 1. `LABOR` ≠ `PERSON`
 
@@ -46,8 +45,10 @@ Three common patterns — workspace glossary should specify which:
 | Pattern | Filter |
 |---|---|
 | Vendor link | `LABOR.VENDOR IS NOT NULL` (most common — labor mapped to COMPANIES vendor) |
-| Outside-only flag | `LABOR.OUTSIDELABOR = 1` |
+| Contractor craft | the labor's `CRAFT` (via `LABORCRAFTRATE`) carries a `VENDOR` |
 | Custom labor type | `LABOR.LABORTYPE IN ('CONTRACTOR', 'VENDOR', ...)` |
+
+There is **no** `LABOR.OUTSIDELABOR` column — do not use it. Inside-vs-outside is the `VENDOR`-based convention above.
 
 Ask before classifying. The `contractor_spend` UDF in `maximo-maintenance-cost` uses the vendor-link pattern by default.
 
@@ -58,13 +59,14 @@ Ask before classifying. The `contractor_spend` UDF in `maximo-maintenance-cost` 
 **Always probe coverage first:**
 
 ```sql
+-- WORKPERIOD has no PERIODTYPE column — every row is a working day; coverage is
+-- just the WORKDATE span. Scheduled hours are derived from SHIFTSTART/SHIFTEND.
 SELECT
     calnum,
-    MIN(startdate) AS coverage_start,
-    MAX(startdate) AS coverage_end,
+    MIN(workdate) AS coverage_start,
+    MAX(workdate) AS coverage_end,
     COUNT(*) AS work_period_count
 FROM workperiod
-WHERE periodtype = 'WORK'
 GROUP BY calnum
 ORDER BY calnum;
 ```
@@ -86,18 +88,7 @@ WHERE q.description LIKE '%hot work%'
 
 Without the `EXPIRYDATE` filter, you'll count people whose certs lapsed years ago.
 
-## 5. `LABREPHIST` vs `LABTRANS`
-
-| Use case | Source |
-|---|---|
-| Cost analytics | `LABTRANS` (see `maximo-work-orders`) — has `LINECOST` |
-| Hours-by-WO analytics | `LABTRANS` |
-| Payroll reconciliation | `LABREPHIST` — has `PAYPERIOD` and `REPORTEDHRS` |
-| Productivity (booked vs reported hours) | Both — join via `LABORCODE` |
-
-For 99% of analytics, use `LABTRANS`. The two tables can disagree because LABTRANS is per-WO transaction and LABREPHIST is per-pay-period.
-
-## 6. `LABORCRAFTRATE` currency aggregation
+## 5. `LABORCRAFTRATE` currency aggregation
 
 `LABORCRAFTRATE.CURRENCYCODE` may vary across labor records in multi-country deployments. Summing `RATE × HOURS` across currencies produces a meaningless number.
 
@@ -111,20 +102,20 @@ SELECT currencycode, SUM(rate) FROM laborcraftrate GROUP BY currencycode;
 
 For total cost analytics, see `maximo-maintenance-cost` (which has the currency-normalization gotcha and uses `LABTRANS.LINECOST` already in-currency).
 
-## 7. Crew membership is time-bounded
+## 6. Crew membership is time-bounded
 
-`CREWLABOR` has `STARTDATE` and `ENDDATE` per (crew, labor) pair. A labor record can be on multiple crews historically or have rotated off a crew. For "current crew composition":
+`AMCREWLABOR` (the crew-membership table; crew master is `AMCREW`) has `EFFECTIVEDATE` and `ENDDATE` per (crew, labor) pair — note the start column is `EFFECTIVEDATE`, not `STARTDATE`. A labor record can be on multiple crews historically or have rotated off a crew. For "current crew composition":
 
 ```sql
-SELECT cl.crewid, cl.laborcode, cl.position
-FROM crewlabor cl
-WHERE cl.startdate <= current_date()
+SELECT cl.amcrew, cl.laborcode, cl.position
+FROM amcrewlabor cl
+WHERE cl.effectivedate <= current_date()
   AND (cl.enddate IS NULL OR cl.enddate > current_date());
 ```
 
 For historical analytics ("crew X composition in 2023 Q3"), use the dates that overlap the window.
 
-## 8. Person-group nesting can loop
+## 7. Person-group nesting can loop
 
 `PERSONGROUP` membership can include other groups (recursive). Some customers create accidental loops in this structure that recursive CTEs can't terminate. Defensively limit recursion depth:
 
@@ -132,7 +123,7 @@ For historical analytics ("crew X composition in 2023 Q3"), use the dates that o
 WITH RECURSIVE persongroup_tree (persongroup, member, depth) AS (
     SELECT persongroup, persongroup AS member, 0 FROM persongroup
     UNION ALL
-    SELECT t.persongroup, pt.persongroupteam_member, t.depth + 1
+    SELECT t.persongroup, pt.respparty, t.depth + 1
     FROM persongroup_tree t
     JOIN persongroupteam pt ON pt.persongroup = t.member
     WHERE t.depth < 10   -- hard cap to prevent runaway recursion on broken data
@@ -140,39 +131,41 @@ WITH RECURSIVE persongroup_tree (persongroup, member, depth) AS (
 SELECT * FROM persongroup_tree;
 ```
 
-## 9. Employee + contractor blends in the same crew
+## 8. Employee + contractor blends in the same crew
 
 A single crew can contain both employee and contractor labor. For "how much of this crew's hours were contractor work":
 
 ```sql
 SELECT
-    cl.crewid,
+    cl.amcrew,
     SUM(CASE WHEN l.vendor IS NULL THEN lt.regularhrs + COALESCE(lt.premiumpayhours, 0) ELSE 0 END) AS employee_hours,
     SUM(CASE WHEN l.vendor IS NOT NULL THEN lt.regularhrs + COALESCE(lt.premiumpayhours, 0) ELSE 0 END) AS contractor_hours
-FROM crewlabor cl
+FROM amcrewlabor cl
 JOIN labor l USING (laborcode, orgid)
 JOIN labtrans lt USING (laborcode)
 WHERE lt.startdate >= current_date() - INTERVAL 30 DAYS
-GROUP BY cl.crewid;
+GROUP BY cl.amcrew;
 ```
 
-## 10. `AVAILREFLY` doesn't always sync with `WORKPERIOD`
+## 9. `MODAVAIL` (availability modifications) doesn't always sync with `WORKPERIOD`
 
-Planned absences in `AVAILREFLY` (vacation, training, sick leave) should reduce the worker's `WORKPERIOD` availability — but the sync depends on customer process. Some customers update `AVAILREFLY` but not `WORKPERIOD`; some do both; some neither.
+Resource availability is modified per labor/crew via the "Modify Availability" object **`MODAVAIL`**, separate from the shared `CALENDAR` / `SHIFT` / `WORKPERIOD`. `MODAVAIL` holds **both** work and non-work rows; **planned absences (vacation/sick/personal/training) are the NON-WORK rows**, identified by a reason code (`RSNCODE` synonym domain — e.g. `VAC` / `SICK` / `PERSONAL`). Do not treat every `MODAVAIL` row as an absence — filter to the non-work reason codes.
+
+These non-work modifications should reduce the worker's `WORKPERIOD` availability — but the sync depends on customer process. Some customers maintain `MODAVAIL` but not `WORKPERIOD`; some do both; some neither.
 
 For a "true available hours" computation, combine both:
 
 ```
-true_available = workperiod_hours - sum_of_overlapping_availrefly_hours
+true_available = workperiod_hours - sum_of_overlapping_MODAVAIL_nonwork_hours
 ```
 
-The shipped `vacation_impact_hours` UDF does this for a single labor over a window. Disclose to the user if `AVAILREFLY` is sparse in their data.
+> **MODAVAIL's exact column names are not publicly documented.** Confirm the resource key, the start/end datetimes, the reason-code column, and the affected-hours column against `MAXATTRIBUTE` (object `MODAVAIL`) in this deployment. Treat the shipped `vacation_impact_hours` UDF and `v_crew_capacity` absence logic as **templates pending column verification** — they reference the table and its work-vs-non-work semantics but do not assert canonical column names. Disclose to the user if `MODAVAIL` is sparse in their data.
 
-Also note `WORKPERIOD.STARTDATE/ENDDATE` and `AVAILREFLY.STARTDATETIME/ENDDATETIME` are stored in the app-server timezone, not per-row UTC (overview gotcha 7). When you bucket capacity or absences by week across multiple sites, confirm the deployment's app-server TZ (a `maximo-setup` fact) — don't assume UTC.
+Also note `WORKPERIOD.WORKDATE/SHIFTSTART/SHIFTEND` and the `MODAVAIL` start/end datetimes are stored in the app-server timezone, not per-row UTC (overview gotcha 7). When you bucket capacity or absences by week across multiple sites, confirm the deployment's app-server TZ (a `maximo-setup` fact) — don't assume UTC.
 
-## 11. Status columns are synonym domains (defer to overview)
+## 10. Status columns are synonym domains (defer to overview)
 
-`LABOR.STATUS`, `ASSIGNMENT.STATUS`, `QUALPERSON.STATUS`, `QUALIFICATION.STATUS`, `CREW.STATUS`, and the `WORKORDER.STATUS` you join to all store the customer-renamable synonym (`SYNONYMDOMAIN.VALUE`), **not** the internal `MAXVALUE`. In stock Maximo internal==external so literals like `STATUS = 'ACTIVE'` work — but if the deployment added synonyms, a literal filter silently misses records. Resolve the set via `SYNONYMDOMAIN` exactly as overview gotcha 5 prescribes (labor-side domains include `LABORSTATUS`, `WOSTATUS` for the joined WO, and the assignment-status domain configured in this deployment):
+`LABOR.STATUS`, `ASSIGNMENT.STATUS`, `QUALPERSON.STATUS`, `QUALIFICATION.STATUS`, `AMCREW.STATUS`, and the `WORKORDER.STATUS` you join to all store the customer-renamable synonym (`SYNONYMDOMAIN.VALUE`), **not** the internal `MAXVALUE`. In stock Maximo internal==external so literals like `STATUS = 'ACTIVE'` work — but if the deployment added synonyms, a literal filter silently misses records. Resolve the set via `SYNONYMDOMAIN` exactly as overview gotcha 5 prescribes (labor-side domains include `LABORSTATUS`, `WOSTATUS` for the joined WO, and the assignment-status domain configured in this deployment):
 
 ```sql
 WHERE l.status IN (

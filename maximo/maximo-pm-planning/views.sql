@@ -63,7 +63,12 @@ WITH pm_expanded AS (
       AND pm.status = 'ACTIVE'
 ),
 labor_rollup AS (
-    SELECT jpnum, orgid, SUM(laborhrs) AS planned_labor_hours, SUM(linecost) AS planned_labor_cost
+    -- LABORHRS * COALESCE(QUANTITY, 1): QUANTITY is the number of resources on the
+    -- line (e.g. 2 mechanics × 4 hrs = 8 planned hours). LINECOST is already a
+    -- per-line total, so it is summed as-is.
+    SELECT jpnum, orgid,
+           SUM(laborhrs * COALESCE(quantity, 1)) AS planned_labor_hours,
+           SUM(linecost)                         AS planned_labor_cost
     FROM :catalog.:silver_schema.jplabor
     WHERE __END_AT IS NULL
     GROUP BY jpnum, orgid
@@ -110,13 +115,13 @@ LEFT JOIN material_rollup mr
 -- whose effective due date falls in each week.
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE VIEW :catalog.:gold_schema.v_pm_workload_by_craft
-COMMENT 'Forecast labor demand by craft × week × site. Aggregates JPLABOR across PMs whose effective due date falls in each week.'
+COMMENT 'Forecast labor demand by craft × week × site. Sums JPLABOR.LABORHRS * COALESCE(QUANTITY, 1) across PMs whose effective due date falls in each week.'
 AS
 SELECT
     f.siteid,
     jpl.craft,
     date_trunc('WEEK', f.effective_due_date)                AS week_starting,
-    SUM(jpl.laborhrs)                                        AS planned_labor_hours,
+    SUM(jpl.laborhrs * COALESCE(jpl.quantity, 1))           AS planned_labor_hours,  -- QUANTITY = resources per line
     COUNT(DISTINCT f.pmnum)                                  AS pm_count
 FROM :catalog.:gold_schema.v_pm_forecast f
 JOIN :catalog.:silver_schema.jplabor jpl

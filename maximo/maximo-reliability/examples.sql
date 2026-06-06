@@ -180,6 +180,5 @@ JOIN :catalog.:silver_schema.workorder w
     ON w.pmnum = pa.pmnum
    AND w.siteid = pa.siteid
 WHERE pa.ancestor = :master_pmnum
-  AND pa.ancestor_siteid = :ancestor_siteid
   AND w.reportdate >= add_months(current_date(), -12)
 ORDER BY w.reportdate DESC;

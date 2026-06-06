@@ -24,15 +24,15 @@ Contents (Silver modeling pattern per MBO):
     Work management : WORKORDER (apply-changes, WOCLASS-filtered) +
                       workorder_all_classes, WOSTATUS (append), LABTRANS (append),
                       ASSIGNMENT (apply-changes)
-    Asset / loc     : ASSET (SCD2), LOCATIONS (SCD2), location_hierarchy (MV),
+    Asset / loc     : ASSET (SCD2), LOCATIONS (SCD2),
                       LOCHIERARCHY / LOCANCESTOR / ASSETANCESTOR (closure MVs),
                       SYSTEM / CLASSSTRUCTURE / CLASSSPEC (MV), ASSETSPEC (apply-changes)
     Meters          : ASSETMETER (SCD2), METERREADING (append)
     PM / failure    : PM (SCD2), FAILUREREPORT (append), FAILURECODE (MV)
     Labor master    : LABOR (SCD2), PERSON (SCD2), CRAFT (MV), LABORCRAFTRATE (SCD2),
                       QUALIFICATION / CERTIFICATION (MV), QUALPERSON (SCD2),
-                      CREW / CREWLABOR (SCD2), PERSONGROUP / CALENDAR (MV),
-                      WORKPERIOD / AVAILREFLY (append)
+                      AMCREW / AMCREWLABOR (SCD2), PERSONGROUP / CALENDAR (MV),
+                      WORKPERIOD / MODAVAIL (append)
 
 Universal Maximo mechanics applied here (owned by maximo-overview, do not
 re-teach): SITEID is part of every apply-changes/SCD2 key; HISTORYFLAG closed
@@ -60,7 +60,8 @@ AUDIT_COLUMN = spark.conf.get("AUDIT_COLUMN", "_ingest_ts")
 
 
 def bronze(table: str):
-    """Read a Bronze table — abstraction over different Bronze shapes."""
+    """Read a Bronze table as a STREAM — for streaming tables (append-only
+    logs and apply_changes sources). Abstraction over different Bronze shapes."""
     if BRONZE_SHAPE in ("partner_connector", "jdbc_dump"):
         return dlt.read_stream(f"{BRONZE_PATH}.{table.lower()}")
     if BRONZE_SHAPE == "mas_kafka":
@@ -68,6 +69,18 @@ def bronze(table: str):
         # already produced flat Bronze tables under BRONZE_PATH.
         return dlt.read_stream(f"{BRONZE_PATH}.{table.lower()}")
     raise ValueError(f"Unknown BRONZE_SHAPE: {BRONZE_SHAPE}")
+
+
+def reference_mv(table: str):
+    """Read a Bronze table as a BATCH (non-streaming) DataFrame — for small,
+    slow-changing reference/lookup tables modeled as MATERIALIZED VIEWS.
+
+    A ``@dlt.table`` whose query is a batch read is a materialized view that is
+    FULL-REFRESHED each run, so reference data is always replaced (no duplicate
+    accumulation). Contrast with ``bronze()`` (``dlt.read_stream``), which makes
+    an APPEND-ONLY streaming table — wrong for reference data that gets edited.
+    """
+    return spark.read.table(f"{BRONZE_PATH}.{table.lower()}")
 
 
 # =============================================================================
@@ -179,26 +192,6 @@ dlt.apply_changes(
 
 
 # =============================================================================
-# LOCHIERARCHY — Materialized View, rebuilt from LOCATIONS each run
-# =============================================================================
-
-@dlt.table(
-    name="location_hierarchy",
-    comment="Silver LOCHIERARCHY — flattened parent chain. Rebuilt from LOCATIONS each run.",
-    table_properties={"quality": "silver"},
-)
-def location_hierarchy():
-    # Recursive CTE-free flatten: limit depth to typical Maximo (5 levels).
-    base = dlt.read("locations").filter("__END_AT IS NULL")  # current SCD2 rows
-    return base.selectExpr(
-        "LOCATION AS location",
-        "SITEID AS siteid",
-        "PARENT AS parent_1",
-        "DESCRIPTION AS description",
-    )
-
-
-# =============================================================================
 # ASSETMETER — SCD Type 2
 # METERREADING — append-only
 # =============================================================================
@@ -274,7 +267,7 @@ def failurereport():
     table_properties={"quality": "silver"},
 )
 def failurecode():
-    return bronze("failurecode")
+    return reference_mv("failurecode")
 
 
 # =============================================================================
@@ -290,7 +283,7 @@ def failurecode():
     table_properties={"quality": "silver"},
 )
 def synonymdomain():
-    return bronze("synonymdomain")
+    return reference_mv("synonymdomain")
 
 
 # =============================================================================
@@ -345,7 +338,7 @@ dlt.apply_changes(
     table_properties={"quality": "silver"},
 )
 def craft():
-    return bronze("craft")
+    return reference_mv("craft")
 
 
 # LABORCRAFTRATE — SCD Type 2 (rates change over time)
@@ -375,7 +368,7 @@ dlt.apply_changes(
     table_properties={"quality": "silver"},
 )
 def qualification():
-    return bronze("qualification")
+    return reference_mv("qualification")
 
 
 # CERTIFICATION — Materialized View
@@ -385,7 +378,7 @@ def qualification():
     table_properties={"quality": "silver"},
 )
 def certification():
-    return bronze("certification")
+    return reference_mv("certification")
 
 
 # QUALPERSON — SCD Type 2 (expirydate evolves; we need history)
@@ -408,41 +401,41 @@ dlt.apply_changes(
 )
 
 
-# CREW — SCD Type 2
-@dlt.view(name="crew_bronze_view")
-def crew_bronze_view():
-    return bronze("crew")
+# AMCREW — SCD Type 2
+@dlt.view(name="amcrew_bronze_view")
+def amcrew_bronze_view():
+    return bronze("amcrew")
 
 
 dlt.create_streaming_table(
-    name="crew",
-    comment="Silver CREW — crew master, SCD2.",
+    name="amcrew",
+    comment="Silver AMCREW — crew master, SCD2.",
     table_properties={"quality": "silver"},
 )
 dlt.apply_changes(
-    target="crew",
-    source="crew_bronze_view",
-    keys=["CREWID", "ORGID"],
+    target="amcrew",
+    source="amcrew_bronze_view",
+    keys=["ORGID", "AMCREW"],
     sequence_by=F.col(AUDIT_COLUMN),
     stored_as_scd_type=2,
 )
 
 
-# CREWLABOR — SCD2 (membership periods)
-@dlt.view(name="crewlabor_bronze_view")
-def crewlabor_bronze_view():
-    return bronze("crewlabor")
+# AMCREWLABOR — SCD2 (membership periods)
+@dlt.view(name="amcrewlabor_bronze_view")
+def amcrewlabor_bronze_view():
+    return bronze("amcrewlabor")
 
 
 dlt.create_streaming_table(
-    name="crewlabor",
-    comment="Silver CREWLABOR — crew membership with STARTDATE/ENDDATE, SCD2.",
+    name="amcrewlabor",
+    comment="Silver AMCREWLABOR — crew membership with EFFECTIVEDATE/ENDDATE, SCD2.",
     table_properties={"quality": "silver"},
 )
 dlt.apply_changes(
-    target="crewlabor",
-    source="crewlabor_bronze_view",
-    keys=["CREWID", "ORGID", "LABORCODE"],
+    target="amcrewlabor",
+    source="amcrewlabor_bronze_view",
+    keys=["AMCREW", "LABORCODE"],
     sequence_by=F.col(AUDIT_COLUMN),
     stored_as_scd_type=2,
 )
@@ -455,7 +448,7 @@ dlt.apply_changes(
     table_properties={"quality": "silver"},
 )
 def persongroup():
-    return bronze("persongroup")
+    return reference_mv("persongroup")
 
 
 # CALENDAR — Materialized View
@@ -465,7 +458,7 @@ def persongroup():
     table_properties={"quality": "silver"},
 )
 def calendar():
-    return bronze("calendar")
+    return reference_mv("calendar")
 
 
 # WORKPERIOD — Streaming Table, append-only
@@ -478,14 +471,14 @@ def workperiod():
     return bronze("workperiod")
 
 
-# AVAILREFLY — Streaming Table, append-only
+# MODAVAIL (Modify Availability) — Streaming Table, append-only
 @dlt.table(
-    name="availrefly",
-    comment="Silver AVAILREFLY — planned absences (vacation / leave / training).",
+    name="modavail",
+    comment="Silver MODAVAIL — Modify Availability (working + non-working time; planned absences are the non-work rows).",
     table_properties={"quality": "silver"},
 )
-def availrefly():
-    return bronze("availrefly")
+def modavail():
+    return bronze("modavail")
 
 
 # ASSIGNMENT — Streaming Table + APPLY CHANGES (status evolves on the row)
@@ -520,7 +513,7 @@ dlt.apply_changes(
     table_properties={"quality": "silver"},
 )
 def lochierarchy():
-    return bronze("lochierarchy")
+    return reference_mv("lochierarchy")
 
 
 # LOCANCESTOR — Materialized View, rebuilt from base.
@@ -533,7 +526,7 @@ def lochierarchy():
 )
 def locancestor():
     # Default: pass through from Bronze.
-    return bronze("locancestor")
+    return reference_mv("locancestor")
     # Alternative for customers without a Bronze LOCANCESTOR: compute via
     # recursive CTE on LOCHIERARCHY (requires SQL, not pure dlt — register
     # via SQL DDL outside the pipeline if needed).
@@ -546,7 +539,7 @@ def locancestor():
     table_properties={"quality": "silver"},
 )
 def assetancestor():
-    return bronze("assetancestor")
+    return reference_mv("assetancestor")
 
 
 # SYSTEM — Materialized View
@@ -556,7 +549,7 @@ def assetancestor():
     table_properties={"quality": "silver"},
 )
 def system_ref():
-    return bronze("system")
+    return reference_mv("system")
 
 
 # CLASSSTRUCTURE — Materialized View
@@ -566,7 +559,7 @@ def system_ref():
     table_properties={"quality": "silver"},
 )
 def classstructure():
-    return bronze("classstructure")
+    return reference_mv("classstructure")
 
 
 # CLASSSPEC — Materialized View
@@ -576,7 +569,7 @@ def classstructure():
     table_properties={"quality": "silver"},
 )
 def classspec():
-    return bronze("classspec")
+    return reference_mv("classspec")
 
 
 # ASSETSPEC — Streaming Table + APPLY CHANGES (per-asset spec values)

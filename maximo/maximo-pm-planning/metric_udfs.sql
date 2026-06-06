@@ -56,7 +56,9 @@ RETURN (
 -- -----------------------------------------------------------------------------
 -- pm_workload_hours — sum of JPLABOR hours for forecast PMs by craft
 -- -----------------------------------------------------------------------------
--- Uses JPLABOR.LABORHRS via JOBPLAN reference. Filters by craft if provided.
+-- Uses JPLABOR.LABORHRS * COALESCE(QUANTITY, 1) via JOBPLAN reference (QUANTITY
+-- is the number of resources on the line, e.g. 2 mechanics → 2× the hours).
+-- Filters by craft if provided.
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION :catalog.:metrics_schema.pm_workload_hours(
     site_id STRING COMMENT 'SITEID. NULL for all sites.',
@@ -65,9 +67,9 @@ CREATE OR REPLACE FUNCTION :catalog.:metrics_schema.pm_workload_hours(
     window_end TIMESTAMP
 )
 RETURNS DOUBLE
-COMMENT 'Trusted metric: total planned labor hours for active PMs effectively due in the window. Sums JPLABOR.LABORHRS through JOBPLAN reference.'
+COMMENT 'Trusted metric: total planned labor hours for active PMs effectively due in the window. Sums JPLABOR.LABORHRS * COALESCE(QUANTITY, 1) through JOBPLAN reference (QUANTITY = resources per line).'
 RETURN (
-    SELECT SUM(jpl.laborhrs)
+    SELECT SUM(jpl.laborhrs * COALESCE(jpl.quantity, 1))
     FROM :catalog.:silver_schema.pm pm
     JOIN :catalog.:silver_schema.jplabor jpl
         ON jpl.jpnum = pm.jpnum AND jpl.orgid = pm.orgid   -- JOBPLAN is org-scoped
@@ -132,28 +134,44 @@ RETURN (
 -- meter_based_pm_forecast — forecast next due for a meter-based PM
 -- -----------------------------------------------------------------------------
 -- (Moved from maximo-reliability — forward-looking forecasting belongs here.)
--- Forecast date = LASTREADINGDATE + (FREQUENCY - LASTREADING) / AVERAGE.
--- NULL if AVERAGE is null/zero (new meter).
+-- Meter cadence lives on PMMETER (keyed SITEID/PMNUM/METERNAME), NOT on PM:
+-- PMMETER.METERNAME is the meter, PMMETER.FREQUENCY is the RECURRING meter interval
+-- (e.g. every 500 HOURS), not an absolute target value. (PM.FREQUENCY is the
+-- TIME-based frequency; PM has no METERNAME column.) Maximo's own non-persistent
+-- estimate is PMMETER.DATEOFNEXTWO. Forecast to the NEXT multiple above LASTREADING:
+--   remaining_units = PMMETER.FREQUENCY - MOD(LASTREADING, PMMETER.FREQUENCY)
+--   forecast date   = LASTREADINGDATE + (remaining_units / AVERAGE) days.
+-- NULL if AVERAGE is null/zero (new meter) or PMMETER.FREQUENCY is null/zero.
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION :catalog.:metrics_schema.meter_based_pm_forecast(
     pmnum_param STRING,
     siteid_param STRING
 )
 RETURNS TIMESTAMP
-COMMENT 'Trusted metric: forecast next due date for a meter-based PM. Uses ASSETMETER.AVERAGE (per-day rate) + LASTREADING. NULL when AVERAGE is NULL/zero.'
+COMMENT 'Trusted metric: forecast next due date for a meter-based PM. Meter cadence comes from PMMETER (METERNAME + recurring FREQUENCY); forecasts to the next multiple above LASTREADING via ASSETMETER.AVERAGE (per-day rate). NULL when AVERAGE or PMMETER.FREQUENCY is NULL/zero.'
 RETURN (
     SELECT
         CASE
             WHEN am.average IS NULL OR am.average <= 0 THEN NULL
-            WHEN pm.frequency - am.lastreading <= 0     THEN current_timestamp()
+            WHEN pmm.frequency IS NULL OR pmm.frequency <= 0 THEN NULL
+            WHEN am.lastreading IS NULL OR am.lastreadingdate IS NULL THEN NULL
+            -- PMMETER.FREQUENCY is a recurring meter interval: forecast to the next
+            -- multiple above LASTREADING.
+            -- remaining_units = PMMETER.FREQUENCY - MOD(LASTREADING, PMMETER.FREQUENCY)
             ELSE am.lastreadingdate
-                 + INTERVAL '1' DAY * ((pm.frequency - am.lastreading) / am.average)
+                 + INTERVAL '1' DAY
+                   * ((pmm.frequency - MOD(am.lastreading, pmm.frequency)) / NULLIF(am.average, 0))
         END
     FROM :catalog.:silver_schema.pm pm
+    -- Meter name + recurring interval live on the PMMETER child table, not on PM
+    JOIN :catalog.:silver_schema.pmmeter pmm
+        ON pmm.pmnum = pm.pmnum AND pmm.siteid = pm.siteid
+       AND pmm.__END_AT IS NULL
+    -- Match the PM's meter to the asset's meter on PMMETER.METERNAME
     JOIN :catalog.:silver_schema.assetmeter am
         ON am.assetnum = pm.assetnum AND am.siteid = pm.siteid
        AND am.__END_AT IS NULL
-       AND am.metername = pm.metername
+       AND am.metername = pmm.metername
     WHERE pm.__END_AT IS NULL
       AND pm.status = 'ACTIVE'
       AND pm.pmnum = pmnum_param

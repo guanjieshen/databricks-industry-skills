@@ -105,6 +105,8 @@ SELECT
     pl.receivedqty,
     il.linecost                                       AS invoice_linecost,
     pl.linecost                                       AS po_linecost,
+    -- CAVEAT: compares a single invoice line to cumulative received qty; it does NOT aggregate
+    -- multiple invoice lines per PO line, so over-invoicing split across invoices can be understated.
     (il.quantity > COALESCE(pl.receivedqty, 0))       AS receipt_gap
 FROM :catalog.:silver_schema.invoiceline il
 JOIN :catalog.:silver_schema.invoice i

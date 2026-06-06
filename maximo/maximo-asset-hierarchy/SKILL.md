@@ -83,7 +83,7 @@ Resolution priority — prefer the highest-level asset that fits the request:
 
 ## What's in this skill (load when…)
 
-- [schema.md](schema.md) — LOCATIONS, LOCHIERARCHY, LOCANCESTOR, ASSET.PARENT, ASSETANCESTOR, SYSTEM, CLASSSTRUCTURE, CLASSSPEC, ASSETSPEC. **Load when** writing non-trivial hierarchy traversal or class-based filtering.
+- [schema.md](schema.md) — LOCATIONS, LOCHIERARCHY, LOCANCESTOR, ASSET.PARENT, ASSETANCESTOR, LOCSYSTEM, CLASSSTRUCTURE, CLASSSPEC, ASSETSPEC. **Load when** writing non-trivial hierarchy traversal or class-based filtering.
 - [gotchas.md](gotchas.md) — recursive-CTE fallback for missing closure tables, depth-limit caveats, cross-system traversal, SITEID propagation, multi-system mismatches. **Load when** the closure-table probe shows tables are missing, or when crossing systems.
 - [examples.sql](examples.sql) — 10 parameterized queries. **Load when** the user's question maps to a common rollup pattern.
 - [views.sql](views.sql) — DDL for the gold views. **Load when** registering views in a new customer environment.

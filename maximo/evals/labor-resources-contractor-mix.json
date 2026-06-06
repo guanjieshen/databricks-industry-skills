@@ -4,7 +4,7 @@
   "expected_behavior": [
     "Loads maximo-labor-resources with maximo-overview as parent",
     "Joins LABTRANS to LABOR via (LABORCODE, ORGID)",
-    "Distinguishes contractor vs employee via LABOR.VENDOR IS NOT NULL (default convention). Workspace glossary may override with LABOR.LABORTYPE or LABOR.OUTSIDELABOR",
+    "Distinguishes contractor vs employee via LABOR.VENDOR IS NOT NULL (default convention) or a contractor CRAFT carrying a VENDOR; there is no LABOR.OUTSIDELABOR column. Workspace glossary may override with a custom LABOR.LABORTYPE value",
     "Filters LABTRANS.TRANSTYPE = 'WORK' and a 3-month look-back window",
     "Aggregates by CRAFT × labor_type (CONTRACTOR/EMPLOYEE) with SUM hours and cost",
     "Does NOT confuse LABOR with PERSON — uses LEFT JOIN to PERSON so contractor labor with no PERSON link still appears"
