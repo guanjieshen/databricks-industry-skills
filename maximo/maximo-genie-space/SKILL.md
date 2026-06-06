@@ -128,7 +128,7 @@ The four ingredients and where each comes from:
 | **Business synonyms** | the `<customer>-maximo-glossary` skill from `maximo-setup` |
 | **Trusted Asset functions** | each module's `metric_udfs.sql` (MTBF/MTTR/PM-compliance/cost) registered as UC functions |
 
-**Step 3 — Instructions.** Draft the general instructions as a two-part block:
+**Step 3 — Instructions.** Keep the written instructions **short**. Genie Space has dedicated surfaces (Joins config + Example SQL + Trusted Assets + UC comments) for most rules — instructions are the smallest of the surfaces, not the largest. Three-part block, in this order:
 
 **Part A — Persona opening (FIRST section, always).** Establish *who the Agent is* and *what it cares about* before any technical rule. Without this, Genie answers like a generic SQL bot; with this, it reasons like a Maximo SME. Template:
 
@@ -148,9 +148,33 @@ before guessing.
 
 Scope `<domain>` to the in-scope modules — if the Space spans work-orders + reliability + PM planning, the persona is *"a maintenance reliability analyst"*; if it's HSE-focused, the persona is *"an HSE / safety analyst"*. Match the customer's primary persona from the family README's persona map.
 
-**Part B — Imperative rules.** Then add terse imperative rules from the universal gotchas in `maximo-overview` (filter `WOCLASS='WORKORDER'`; count `ISTASK=0`; join on `SITEID`; resolve status via `SYNONYMDOMAIN`; mind `HISTORYFLAG`; treat datetimes as app-server-timezone) plus the synonym mappings from the workspace glossary.
+**Part B — Rules that *can't* be shown by an example query.** Keep this list tight. Move anything an example query can demonstrate over to Step 5; move anything about *relationships between tables* over to the Joins config (see *What goes where* below). What's left in instructions is genuinely semantic — things no single query teaches:
 
-Order matters: persona opening teaches Genie *how to think*; the rules constrain *what it does*. Reversed (rules first, no persona), Genie applies the rules but doesn't carry the SME mindset into ambiguous questions.
+- *"Datetimes are stored in the app-server timezone (`<customer's TZ>`). Bucket day/week/month accordingly — do not assume UTC."*
+- *"`CAP` work-type is capital, not maintenance — exclude from any 'maintenance' total."*
+- *"Status `WPCOND` means waiting on permit conditions and counts as backlog."* (terse — let the example queries show the full status set in `WHERE` clauses.)
+
+Three or four lines, not twenty. The verbose imperative-rule style ("always filter X, always join on Y, count Z=0…") **belongs in example queries, not here**.
+
+**Part C — What to defer to the user.** A short list of the customer's still-open follow-ups from the glossary (the Needs-confirmation table). Instruction wording: *"For questions about <X>, ask the user before answering — the customer's convention is still unconfirmed."*
+
+Order matters: persona first (how to think), then semantic rules (what to keep in mind), then defer-to-user list (when to ask). Reversed = rules without mindset.
+
+### What goes where — *avoid duplicating rules across surfaces*
+
+| Goal | Surface | Why |
+|---|---|---|
+| Teach `WOCLASS='WORKORDER'` filter | **Example SQL** | Every "open backlog" example query shows it in the `WHERE` clause. Genie learns the pattern. |
+| Teach `ISTASK=0` parent-dedup | **Example SQL** | Same — every count example shows it. |
+| Teach `SYNONYMDOMAIN` status resolution | **Example SQL** + UC comment on `STATUS` column | One canonical query shows the resolution; the column comment names the column behavior. |
+| Teach `HISTORYFLAG=0` filtering (when applicable) | **Example SQL** + UC comment on `HISTORYFLAG` column | Same pattern. |
+| Encode table-to-table joins (`WORKORDER`→`ASSET`, `WORKORDER`→`LOCATIONS` on composite `SITEID` keys) | **Joins configuration** (declarative) | Genie respects declared joins without instruction text. Don't write *"always join on `SITEID`"* — declare the composite-key join once in Joins config. |
+| Encode synonym vocabulary (Mainline → SITEIDs, etc.) | **Business synonyms** field in Genie Space + glossary skill | Don't bake into instructions; use the dedicated surface. |
+| Encode canonical metrics (open WO count, MTBF, PM compliance) | **Trusted Assets** (UC SQL functions) + `metric_view.yaml` measures | `MEASURE()` calls in examples teach Genie to reach for the metric view rather than reinventing. |
+| Establish persona / mindset | **Instructions Part A** | Only place that captures *how to think* — no other surface does this. |
+| Truly-semantic rules (timezone interpretation, capital-vs-maintenance, custom-status meaning) | **Instructions Part B** | Examples can't fully capture; needs prose. Keep terse. |
+
+Rule of thumb: if you find yourself writing *"always filter X"* / *"always join on Y"* / *"always count Z=0"* in instructions, that rule belongs in an example query, the Joins config, or a UC comment instead. Prose instructions are the **last** surface, not the first.
 
 **Step 4 — Trusted Assets.** Register the relevant `metric_udfs.sql` functions
 (substituting the customer catalog.schema), then add them to the Space so Genie
@@ -158,14 +182,20 @@ computes metrics via *certified* functions. Each metric's definition is owned by
 its module skill — do not redefine it here. See
 [Trusted Assets](https://docs.databricks.com/aws/en/genie/trusted-assets).
 
-**Step 5 — Example SQL.** Add the parameterized queries from each in-scope
-module's `examples.sql` as Genie example queries — the gold-standard patterns.
+**Step 5 — Example SQL (do most of the heavy lifting here).** Add the parameterized queries from each in-scope module's `examples.sql` as Genie example queries. **Examples teach patterns, not just seed answers** — every filter / join / dedup convention should appear in at least one example query, so Genie learns by pattern-matching rather than by rule-reciting. If you find yourself writing prose in Step 3 to teach a pattern, add (or repair) an example query instead.
 
-**Step 6 — Benchmark.** Run [benchmark.md](benchmark.md) against the Space. For
-each miss, fix in this order: (a) UC comment (via `maximo-setup`), (b) glossary
-synonym / instruction, (c) add/repair an example query or Trusted Asset. Re-run
-until it clears the acceptance bar. Use the Genie **Monitoring** tab to find real
-questions it got wrong and feed them back.
+**Step 5b — Joins configuration (declare relationships, don't describe them).** Use the Genie Space's **Joins** configuration to declaratively register the composite-key joins between Maximo tables (`WORKORDER`↔`ASSET` on `assetnum + siteid`; `WORKORDER`↔`LOCATIONS` on `location + siteid`; etc.). Genie respects declared joins without needing instruction text. **Never write "always join on `SITEID`" in instructions** — declare the join once in Joins config and it applies to every query.
+
+**Step 6 — Benchmark.** Run [benchmark.md](benchmark.md) against the Space. For each miss, fix in this order — **examples first, instructions last**:
+
+1. **UC comment** (via `maximo-setup`) — if Genie misread a column meaning
+2. **Joins configuration** — if Genie wrote a wrong join (missing composite key, wrong direction)
+3. **Trusted Asset / metric_view measure** — if Genie reinvented a metric instead of calling the governed one
+4. **Example SQL** — if Genie missed a pattern (filter, dedup, status resolution). **Most misses fix here**, not in instructions.
+5. **Business synonym** — if Genie missed a vocabulary mapping
+6. **Instructions (Part A persona or Part B semantic rule)** — last resort. Only if no example query / join / synonym can encode it.
+
+Use the Genie **Monitoring** tab to find real questions it got wrong and feed them back.
 
 ## What's in this skill
 
@@ -184,8 +214,10 @@ This skill provides the Maximo curation content; that one provides the mechanics
 - Don't hand-write metric SQL into the Space — register the Trusted Asset
   functions instead. The metric *definitions* belong to the module skills
   (`maximo-reliability`, `maximo-maintenance-cost`, etc.), not here.
+- Don't write verbose imperative-rule instructions ("always filter X", "always join on Y", "always count Z=0"). If an example query can demonstrate the pattern, add the example; if a join belongs in the Joins configuration, declare it there. Instructions are the smallest surface, not the largest — keep them short and reserved for genuinely semantic rules examples can't capture (timezone interpretation, capital-vs-maintenance, custom-status meaning). See *What goes where* in Step 3.
 - Don't re-teach the universal data mechanics in the instructions — state them as
-  rules and let `maximo-overview` carry the rationale.
+  example-query patterns and let `maximo-overview` carry the rationale.
+- Don't write `"always join on SITEID"` into the instructions text — that's the Joins config's job. Declare the composite-key joins (`WORKORDER`↔`ASSET` on `assetnum + siteid`; `WORKORDER`↔`LOCATIONS` on `location + siteid`; etc.) once in the Genie Space Joins configuration and Genie respects them automatically.
 - Don't expose raw Bronze tables; expose conformed Silver/Gold tables and views.
 - Don't write or alter UC comments / table metadata from this skill — UC comments
   are owned by `maximo-setup` (preview-then-apply, gated on explicit user
