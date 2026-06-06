@@ -113,22 +113,45 @@ One-time session config — cache, don't re-ask:
 ```
 - [ ] Step 1: Confirm prerequisites (maximo-setup done; catalog/schema; tables to expose)
 - [ ] Step 2: Pick scope (which modules → which tables/views and example queries)
-- [ ] Step 3: Assemble instructions (overview gotchas as rules + glossary synonyms)
-- [ ] Step 4: Register Trusted Asset functions and add them to the Space
-- [ ] Step 5: Load certified example SQL from the module examples.sql files
-- [ ] Step 6: Run the benchmark; fix gaps; repeat
+- [ ] Step 3: Draft the Description (SHORT — 1–2 sentences; distinct from Instructions)
+- [ ] Step 4: Draft the Instructions (persona + semantic rules; NOT a copy of the Description)
+- [ ] Step 5: Register Trusted Asset functions and add them to the Space
+- [ ] Step 6: Add certified example SQL from the module examples.sql files
+- [ ] Step 6b: Declare composite-key joins in the Joins configuration
+- [ ] Step 7: Run the benchmark; fix on the matching surface; repeat
 ```
 
-The four ingredients and where each comes from:
+The Genie Space has multiple text + config surfaces. Match content to the right one — each has a sweet spot:
 
-| Genie Space needs | Source in this family |
-|---|---|
-| **General instructions** | `maximo-overview` gotchas (encoded as rules) + the workspace glossary from `maximo-setup` |
-| **Certified example SQL** | each in-scope module skill's `examples.sql` |
-| **Business synonyms** | the `<customer>-maximo-glossary` skill from `maximo-setup` |
-| **Trusted Asset functions** | each module's `metric_udfs.sql` (MTBF/MTTR/PM-compliance/cost) registered as UC functions |
+| Genie Space field | Source in this family | What goes here |
+|---|---|---|
+| **Description** (short, user-facing) | This skill, Step 3 | 1–2 sentences: what the Space is for, who it's for. Visible to end users in the Space picker. NOT the agent's behavior rules. |
+| **General instructions** (agent behavior) | This skill, Step 4 — persona + semantic rules from `maximo-overview` gotchas + workspace glossary | How the agent should think and answer. Substantial when there's substantial content (persona, semantic rules, KPI definitions, tribal knowledge). |
+| **Certified example SQL** | each in-scope module skill's `examples.sql` | Pattern teaching — query shapes Genie learns from. |
+| **Business synonyms** | the `<customer>-maximo-glossary` skill from `maximo-setup` | Customer vocabulary → schema mappings. |
+| **Trusted Asset functions** | each module's `metric_udfs.sql` | Governed metric definitions Genie calls via `MEASURE()` / function call. |
+| **Joins configuration** | Step 6b below | Declarative composite-key joins between Maximo tables. |
 
-**Step 3 — Instructions.** A Genie Space has multiple surfaces (Instructions, Example SQL, Joins config, Trusted Assets, Business synonyms, UC comments). Each has a sweet spot — **match content to the right surface**. Instructions are the right surface for things that *only* prose can carry: persona, judgment guidance, semantic rules, boundaries, customer-specific tribal knowledge. Use them heavily for that content. Don't use them to teach things examples or the Joins config carry better. Three-part block, in this order:
+**Step 3 — Description (SHORT, 1–2 sentences).** This is a **distinct field** from the Instructions field — don't conflate. The Description is what end users see in the Space picker / Space list; it answers *"what is this Space for?"* in 1–2 sentences. It is NOT the agent's behavior rules.
+
+Template:
+```
+<Customer>'s Maximo <domain> agent. Ask natural-language questions
+about <in-scope topics — work orders, PM compliance, integrity
+inspections, etc.> for <customer-specific scope, e.g. Mainline +
+Field operations>.
+```
+
+Example for a work-orders-scoped Enbridge Space:
+```
+Enbridge's Maximo work-order agent. Ask natural-language questions
+about open backlog, completion trends, labor utilization, and PM-vs-
+corrective mix across Mainline and Field operations.
+```
+
+Keep it under ~30 words. Specific enough that a user can tell whether this Space is the right one to pick. Do NOT put behavior rules, persona prose, table filters, or any imperative content here — those go in the Instructions field (Step 4).
+
+**Step 4 — Instructions.** A Genie Space has multiple surfaces (Instructions, Example SQL, Joins config, Trusted Assets, Business synonyms, UC comments). Each has a sweet spot — **match content to the right surface**. Instructions are the right surface for things that *only* prose can carry: persona, judgment guidance, semantic rules, boundaries, customer-specific tribal knowledge. Use them heavily for that content. Don't use them to teach things examples or the Joins config carry better. Three-part block, in this order:
 
 **Part A — Persona opening (FIRST section, always).** Establish *who the Agent is* and *what it cares about* before any technical rule. Without this, Genie answers like a generic SQL bot; with this, it reasons like a Maximo SME. Template:
 
@@ -179,17 +202,29 @@ Genie Space has multiple surfaces, each with a sweet spot. Use the one that fits
 
 The anti-pattern isn't *long* instructions — it's *imperative-rule instructions that examples already teach*. *"Always filter `WOCLASS='WORKORDER'`"* duplicates what every example query shows; that rule belongs in examples. *"`CAP` is capital, exclude from maintenance"* is a semantic interpretation no query shows on its own; that rule belongs in instructions. Different content, different surface.
 
-**Step 4 — Trusted Assets.** Register the relevant `metric_udfs.sql` functions
+**Step 5 — Trusted Assets.** Register the relevant `metric_udfs.sql` functions
 (substituting the customer catalog.schema), then add them to the Space so Genie
 computes metrics via *certified* functions. Each metric's definition is owned by
 its module skill — do not redefine it here. See
 [Trusted Assets](https://docs.databricks.com/aws/en/genie/trusted-assets).
 
-**Step 5 — Example SQL (do most of the heavy lifting here).** Add the parameterized queries from each in-scope module's `examples.sql` as Genie example queries. **Examples teach patterns, not just seed answers** — every filter / join / dedup convention should appear in at least one example query, so Genie learns by pattern-matching rather than by rule-reciting. If you find yourself writing prose in Step 3 to teach a pattern, add (or repair) an example query instead.
+**Step 6 — Example SQL (do most of the heavy lifting here).** Add the parameterized queries from each in-scope module's `examples.sql` as Genie example queries. **Examples teach patterns, not just seed answers** — every filter / join / dedup convention should appear in at least one example query, so Genie learns by pattern-matching rather than by rule-reciting. If you find yourself writing prose in Step 4 to teach a pattern, add (or repair) an example query instead.
 
-**Step 5b — Joins configuration (declare relationships, don't describe them).** Use the Genie Space's **Joins** configuration to declaratively register the composite-key joins between Maximo tables (`WORKORDER`↔`ASSET` on `assetnum + siteid`; `WORKORDER`↔`LOCATIONS` on `location + siteid`; etc.). Genie respects declared joins without needing instruction text. **Never write "always join on `SITEID`" in instructions** — declare the join once in Joins config and it applies to every query.
+**Step 6b — Joins configuration (declare relationships, don't describe them).** Use the Genie Space's **Joins** configuration to declaratively register the composite-key joins between Maximo tables (`WORKORDER`↔`ASSET` on `assetnum + siteid`; `WORKORDER`↔`LOCATIONS` on `location + siteid`; etc.). Genie respects declared joins without needing instruction text. **Never write "always join on `SITEID`" in instructions** — declare the join once in Joins config and it applies to every query.
 
-**Step 6 — Benchmark.** Run [benchmark.md](benchmark.md) against the Space. For each miss, **diagnose what kind of miss it is** and fix on the matching surface — don't dump every fix into instructions, and don't avoid instructions when they're the right surface:
+**Step 7 — Benchmark (add to the Space, not just run externally).** Two parts: (a) load the benchmark questions into the Space's **Benchmark** tab so they persist as a validation set the Space owns; (b) run them and iterate.
+
+**Step 7a — Add benchmark questions to the Space's Benchmark tab.** Don't just keep [benchmark.md](benchmark.md) as an external doc you grade by hand. The Genie Space has a first-class Benchmark feature — load the questions there so:
+- The Space carries its own regression-validation set (anyone can re-run it).
+- Genie tracks pass/fail across versions of the Space, surfacing drift.
+- New real-world questions caught in the **Monitoring** tab can be promoted into the benchmark with one click.
+
+Source the questions from [benchmark.md](benchmark.md) (the starter set), then add the customer's own actual-business questions on top — those are the ones that matter most. Coverage target:
+- ≥3 questions per in-scope module (one each: simple count, breakdown, time-windowed)
+- ≥2 ambiguity-resolution questions (open-status set, criticality scheme — Genie should ask back, not guess)
+- ≥2 cross-module / hierarchical questions (e.g. "backlog at Mainline by work type") to exercise Joins config + glossary
+
+**Step 7b — Run + iterate.** Run the benchmark from the Space. For each miss, **diagnose what kind of miss it is** and fix on the matching surface — don't dump every fix into instructions, and don't avoid instructions when they're the right surface:
 
 | Miss shape | Fix surface |
 |---|---|
@@ -223,7 +258,9 @@ This skill provides the Maximo curation content; that one provides the mechanics
   (`maximo-reliability`, `maximo-maintenance-cost`, etc.), not here.
 - Don't use instructions to teach query patterns examples already teach (filters like `WOCLASS='WORKORDER'` / `ISTASK=0` / `HISTORYFLAG=0`). The fix isn't to shrink instructions — it's to add example queries that demonstrate the pattern. Instructions stay for content that examples *can't* carry (persona, semantic rules, judgment, scope, tribal knowledge, KPI definitions, defer-to-user logic) — use them heavily for that.
 - Don't describe table-to-table joins in prose. Composite-key joins (`WORKORDER`↔`ASSET` on `assetnum + siteid`; `WORKORDER`↔`LOCATIONS` on `location + siteid`; etc.) are declarative — register them once in the Genie Space Joins configuration and Genie respects them automatically. Writing *"always join on `SITEID`"* in instructions duplicates what the Joins config should be saying.
-- Don't dump every fix into instructions during benchmarking. Match the fix to the kind of miss (see Step 6 table) — a wrong-metric miss fixes at Trusted Assets, a missed-pattern miss fixes at example SQL, a wrong-mindset miss fixes at instructions Part A.
+- Don't dump every fix into instructions during benchmarking. Match the fix to the kind of miss (see Step 7b table) — a wrong-metric miss fixes at Trusted Assets, a missed-pattern miss fixes at example SQL, a wrong-mindset miss fixes at instructions Part A.
+- Don't conflate the **Description** and **Instructions** fields. Description is a SHORT 1–2 sentence user-facing summary (what the Space is for; who picks it). Instructions is the agent's behavior block (persona + semantic rules). Putting persona / behavior rules into the Description field surfaces them to end users in the Space picker — wrong audience, wrong surface. Step 3 = Description; Step 4 = Instructions; keep them separate.
+- Don't skip Step 7a (loading benchmark questions into the Space's Benchmark tab). Running [benchmark.md](benchmark.md) externally is fine for the first pass, but the questions need to LIVE in the Space so the Space carries its own validation set, regressions are visible across versions, and Monitoring-tab finds can be promoted in with one click.
 - Don't expose raw Bronze tables; expose conformed Silver/Gold tables and views.
 - Don't write or alter UC comments / table metadata from this skill — UC comments
   are owned by `maximo-setup` (preview-then-apply, gated on explicit user
