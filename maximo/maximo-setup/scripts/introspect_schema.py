@@ -235,7 +235,7 @@ def build_draft(catalog: str, schema: str, profile: str | None) -> dict:
         "Batch 0: confirm industry, industry-solution add-ons (PLUSG?), and which modules above are actually used + for what.",
         "Confirm which STATUS values count as 'open' (see work_order.proposed_open_statuses).",
         "Map WORKTYPE values to corrective / preventive / emergency / regulatory.",
-        "Label SITEID values with business site names (e.g. 'Mainline').",
+        "Label SITEID values with business site names (e.g. 'Region North').",
         "Label CLASSSTRUCTUREID values with business asset-class names (e.g. 'centrifugal pump').",
         "Describe each detected custom column (what it stores, who uses it).",
     ]

@@ -44,7 +44,7 @@ Out of the box Genie doesn't know *your* Maximo — it guesses at table/column m
 
 (`<skills-root>` = `/Workspace/.assistant/skills` for a workspace install, or `/Users/<email>/.assistant/skills` for a user install.)
 
-**What the glossary carries**: customer business terms ("Mainline", "Region", "centrifugal pump") mapped to Maximo schema (SITEIDs, LOCATION hierarchy levels, CLASSSTRUCTUREIDs); customer-specific values within the universal mechanics owned by `maximo-overview` (open-status set, app-server timezone, SYNONYMDOMAIN renamings); and customer-specific customization knowledge (workflows, criticality scheme, failure-code scheme, currency, assignment model, custom columns).
+**What the glossary carries**: customer business terms (e.g. "Region North", "Plant 3", "centrifugal pump") mapped to Maximo schema (SITEIDs, LOCATION hierarchy levels, CLASSSTRUCTUREIDs); customer-specific values within the universal mechanics owned by `maximo-overview` (open-status set, app-server timezone, SYNONYMDOMAIN renamings); and customer-specific customization knowledge (workflows, criticality scheme, failure-code scheme, currency, assignment model, custom columns).
 
 **If the customer also wants UC table/column comments registered** on the Maximo Silver tables — they must explicitly request it. That's a separate, opt-in flow with multi-checkpoint vetting (the *Optional* section below). UC writes modify customer-owned tables and must never run as a side effect of the default setup.
 
@@ -52,14 +52,14 @@ Out of the box Genie doesn't know *your* Maximo — it guesses at table/column m
 
 - "Set up Maximo for Genie / configure Genie for our Maximo data"
 - "Set up our business glossary for Maximo"
-- "Genie doesn't understand our terms like Mainline / Region / Field"
+- "Genie doesn't understand our customer-specific terms (regional names, business unit names, asset-class jargon)"
 - "Register column comments on our Maximo tables"
 - One of the first things a new customer should run after the Maximo skill family is installed
 
 ## Pre-flight
 
 1. **Catalog/schema location**: "Which catalog/schema holds your Maximo Silver layer?" (e.g. `eam.maximo_silver`)
-2. **Workspace customer name**: "What short name should we use for your organization in skill filenames?" (e.g. `enbridge`, `acme-energy`). This becomes part of the generated glossary skill name.
+2. **Workspace customer name**: "What short name should we use for your organization in skill filenames?" (e.g. `acme-energy`, `northstar`). This becomes part of the generated glossary skill name.
 3. **Output scope**: workspace-wide (admin) or user-scoped?
 4. **Check default Genie Code instructions**: if the workspace already has default Genie Code instructions configured (Workspace Settings → Genie Code → Default instructions), **read them first**. Anything documented there — catalog/schema, base currency, timezone, open-status set, customer jargon — is already in Genie's per-turn context and should NOT be re-asked. Use them to pre-populate `draft_profile.json` and skip the corresponding interview questions. If no default instructions exist, proceed normally.
 
@@ -120,8 +120,8 @@ python scripts/generate_glossary.py \
 # <skills-root> = /Workspace/.assistant/skills        (workspace install)
 #              or /Users/<email>/.assistant/skills     (user install — per the scope pre-flight)
 #
-# CORRECT:   /Users/.../.assistant/skills/enbridge-maximo-glossary/SKILL.md
-# WRONG:     /Users/.../.assistant/skills/maximo/enbridge-maximo-glossary/SKILL.md  ← nested; auto-discovery doesn't find it
+# CORRECT:   /Users/.../.assistant/skills/northstar-maximo-glossary/SKILL.md
+# WRONG:     /Users/.../.assistant/skills/maximo/northstar-maximo-glossary/SKILL.md  ← nested; auto-discovery doesn't find it
 ```
 
 The script writes a skill file using [glossary_template.md](glossary_template.md) as the structure. See [example_glossary.md](example_glossary.md) for a worked output.

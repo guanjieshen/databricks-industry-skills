@@ -1,9 +1,9 @@
 {
-  "query": "Show me items below reorder point at MAIN-WEST",
+  "query": "Show me items below reorder point at ZONE-W",
   "expected_skill": "maximo-inventory",
   "expected_behavior": [
     "Loads maximo-inventory with maximo-overview as parent",
-    "Resolves 'MAIN-WEST' through the workspace glossary to a SITEID or storeroom location set",
+    "Resolves 'ZONE-W' through the workspace glossary to a SITEID or storeroom location set",
     "Uses v_inventory_position (or v_reorder_alerts) — does NOT join INVENTORY to all LOCATIONS without filtering TYPE='STOREROOM'",
     "Computes AVAILABLE = CURBAL - RESERVEDQTY (does not report CURBAL as 'available')",
     "Filters to INVENTORY.STATUS='ACTIVE' and ITEM.STATUS='ACTIVE'"

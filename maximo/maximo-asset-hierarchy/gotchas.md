@@ -23,15 +23,15 @@ A single-level self-join walks one parent step only:
 -- WRONG for multi-level rollup — returns only immediate children
 SELECT child.location FROM locations child
 JOIN locations parent ON parent.location = child.parent
-WHERE parent.location = 'REGION-WEST';
+WHERE parent.location = 'REGION-NORTH';
 ```
 
 `LOCANCESTOR` does the right thing for arbitrary depth:
 
 ```sql
--- All descendants of REGION-WEST (at any depth)
+-- All descendants of REGION-NORTH (at any depth)
 SELECT la.location FROM locancestor la
-WHERE la.ancestor = 'REGION-WEST'
+WHERE la.ancestor = 'REGION-NORTH'
   AND la.systemid = 'PRIMARY'
   AND la.siteid   = '<your-siteid>';
 ```
@@ -86,13 +86,13 @@ If `LOCANCESTOR` doesn't exist or is sparse, fall back to a recursive CTE:
 ```sql
 WITH RECURSIVE loc_tree (root, location, depth) AS (
     SELECT location, location, 0 FROM locations
-    WHERE location = 'REGION-WEST' AND siteid = 'MAIN-WEST'
+    WHERE location = 'REGION-NORTH' AND siteid = 'ZONE-W'
 
     UNION ALL
 
     SELECT t.root, l.location, t.depth + 1
     FROM loc_tree t
-    JOIN locations l ON l.parent = t.location AND l.siteid = 'MAIN-WEST'
+    JOIN locations l ON l.parent = t.location AND l.siteid = 'ZONE-W'
     WHERE t.depth < 20   -- defensive limit
 )
 SELECT location FROM loc_tree;
@@ -118,7 +118,7 @@ Some Maximo installations have `LOCANCESTOR` rows where `LOCATION = ANCESTOR` (t
 SELECT COUNT(*) FROM locancestor WHERE location = ancestor LIMIT 1;
 ```
 
-If self-inclusion is missing and you want "all assets at or under REGION-WEST", you need to `UNION` the location itself with its descendants. The shipped views include the self row explicitly to remove ambiguity.
+If self-inclusion is missing and you want "all assets at or under REGION-NORTH", you need to `UNION` the location itself with its descendants. The shipped views include the self row explicitly to remove ambiguity.
 
 ## 7. Depth limits for recursive CTEs
 

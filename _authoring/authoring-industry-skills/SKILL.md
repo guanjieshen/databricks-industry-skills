@@ -286,8 +286,8 @@ Each surface has a sweet spot. The anti-pattern is **putting content on the wron
 
 What DOES belong in Instructions (and where authors should put *substantial* content):
 - **Persona opening** — *"You are an expert Maximo analyst focused on work-order operations. You care about backlog health, completion trends, labor utilization. You reason in the user's vocabulary…"* (FIRST section, always — without it the agent answers like a generic SQL bot)
-- **Semantic rules examples can't capture** — *"Datetimes are in app-server timezone (`America/Edmonton`). `CAP` work-type is capital, not maintenance — exclude from maintenance totals."*
-- **Customer-specific tribal knowledge** — *"Mainline integrity inspections are tracked as `WORKTYPE='INSP' AND wo_reg_flag='Y'` — both flags needed."*
+- **Semantic rules examples can't capture** — *"Datetimes are in app-server timezone (`<customer's TZ from the glossary>`). `CAP` work-type is capital, not maintenance — exclude from maintenance totals."*
+- **Customer-specific tribal knowledge** — *"Regulatory inspections are tracked as `WORKTYPE='INSP' AND <custom_flag>='Y'` — both flags needed."* (source the actual flag name from the customer's glossary)
 - **KPI definitions** specific to the customer (when not already in Trusted UDFs)
 - **Judgment guidance / "when in doubt"** — *"For cost questions, check `wo_currencycode` — convert to base currency before aggregating."*
 - **Scope and boundaries** — *"You answer questions about work orders + labor + HSE permits. For cost methodology, defer."*
@@ -363,7 +363,7 @@ Pattern to cover:
 - **Disambiguation by reference** — using `@<table-name>` or `@<column>` to lock context when natural language spans multiple modules/tables (Maximo: `@workorder` vs `@pm`; Salesforce: `@Case` vs `@Opportunity`).
 - **Source-specific type-conversion / timezone hints** — when Genie needs help converting (Maximo datetimes are app-server-local; Salesforce datetimes are UTC; SAP dates are client-zone). Tell users when to specify the convention in-prompt.
 - **Output-shape steering** — "as a bar chart" / "as a table grouped by site" / "step-by-step". Per Databricks docs, Genie respects explicit structure asks.
-- **Scope-narrowing for the source's universal traps** — e.g. for Maximo: "open work orders" → "open work orders (`STATUS IN (WAPPR, APPR, INPRG, WMATL, WPCOND)`) on Mainline for the last 30 days". Steers Genie around the customer's status convention.
+- **Scope-narrowing for the source's universal traps** — e.g. for Maximo: "open work orders" → "open work orders (`STATUS IN (<customer's open-status set>)`) for `<specific site or region>` over the last 30 days". Steers Genie around the customer's status convention.
 - **`/findTables` use** — when natural language is ambiguous about which table, recommend the slash command rather than guessing.
 
 The cookbook lives with the `-genie-agent` skill so it ships and updates alongside the Space's curation. Customers can paste it into their Space's README/launchpad. Defer general Genie Code prompting tips to [Databricks docs](https://docs.databricks.com/aws/en/genie-code/use-genie-code) — only encode source-specific guidance here.

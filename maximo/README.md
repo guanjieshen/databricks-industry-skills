@@ -72,21 +72,23 @@ Discovery + quality test cases live in [`evals/`](./evals/) (`query → expected
 **Recommended:** run the repo's [`install_industry_skills.py`](../install_industry_skills.py)
 notebook and pick `FAMILY = maximo` — it installs all Maximo skills straight from GitHub, no clone needed.
 
-**Or install via CLI:**
+**Or install via CLI** (the per-skill loop is required so each skill lands as a direct child of `.assistant/skills/` — Genie Code's auto-discovery does **not** recurse into nested subfolders, so a single `import-dir maximo/` would silently break description-match loading):
 
 ```bash
 # Workspace-scoped (admin, visible to all users)
-databricks workspace import-dir \
-  maximo/ \
-  /Workspace/.assistant/skills/ \
-  --overwrite
+for skill in maximo/maximo-*/; do
+  name=$(basename "$skill")
+  databricks workspace import-dir "$skill" "/Workspace/.assistant/skills/$name" --overwrite
+done
 
 # Or user-scoped (just for you)
-databricks workspace import-dir \
-  maximo/ \
-  /Workspace/Users/<your-email>/.assistant/skills/ \
-  --overwrite
+for skill in maximo/maximo-*/; do
+  name=$(basename "$skill")
+  databricks workspace import-dir "$skill" "/Workspace/Users/<your-email>/.assistant/skills/$name" --overwrite
+done
 ```
+
+Result: each skill lives flat at `<skills-root>/maximo-<topic>/` — not nested under `<skills-root>/maximo/`. The `evals/` folder is for repo-side CI and is not installed.
 
 After installing, open a **new** Genie Code chat — skills load when their description matches your prompt.
 

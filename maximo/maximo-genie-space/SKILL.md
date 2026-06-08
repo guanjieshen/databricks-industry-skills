@@ -139,15 +139,15 @@ Template:
 ```
 <Customer>'s Maximo <domain> agent. Ask natural-language questions
 about <in-scope topics — work orders, PM compliance, integrity
-inspections, etc.> for <customer-specific scope, e.g. Mainline +
-Field operations>.
+inspections, etc.> for <customer-specific scope, e.g. specific
+operating regions or asset groups>.
 ```
 
-Example for a work-orders-scoped Enbridge Space:
+Example for a work-orders-scoped Space at a fictional `Northstar Energy`:
 ```
-Enbridge's Maximo work-order agent. Ask natural-language questions
+Northstar Energy's Maximo work-order agent. Ask natural-language questions
 about open backlog, completion trends, labor utilization, and PM-vs-
-corrective mix across Mainline and Field operations.
+corrective mix across all operating regions.
 ```
 
 Keep it under ~30 words. Specific enough that a user can tell whether this Space is the right one to pick. Do NOT put behavior rules, persona prose, table filters, or any imperative content here — those go in the Instructions field (Step 4).
@@ -175,9 +175,9 @@ Scope `<domain>` to the in-scope modules — if the Space spans work-orders + re
 **Part B — Semantic rules, business logic, and judgment guidance.** Content that genuinely belongs here, used heavily:
 
 - *Semantic rules examples can't capture* — *"Datetimes are stored in the app-server timezone (`<customer's TZ>`). Bucket day/week/month accordingly — do not assume UTC."* / *"`CAP` work-type is capital, not maintenance — exclude from any 'maintenance' total."*
-- *Custom-status / customer-vocabulary meanings* — *"`WPCOND` means waiting on permit conditions and counts as backlog at Enbridge. `EM` is emergency maintenance — counts as corrective in trends but tracked in its own bucket. `INSP` is regulatory inspection — its own category, do NOT roll into preventive."*
-- *Customer-specific tribal knowledge* — *"Mainline integrity inspections are tracked as `WORKTYPE='INSP' AND wo_reg_flag='Y'` — both flags needed. Other inspection types do not carry `wo_reg_flag='Y'`."*
-- *KPI definitions specific to the customer* (where they aren't already in Trusted UDFs) — *"Schedule compliance at Enbridge is computed weekly, target 95%, against PMs in the `WSCH` status at week-start."*
+- *Custom-status / customer-vocabulary meanings* — *"`<CUSTOM_STATUS>` means waiting on plant conditions and counts as backlog for this customer. `EM` is emergency maintenance — counts as corrective in trends but tracked in its own bucket. `INSP` is regulatory inspection — its own category, do NOT roll into preventive."*
+- *Customer-specific tribal knowledge* — *"Regulatory inspections are tracked via `WORKTYPE='INSP' AND <custom_flag>='Y'` — both flags needed. Other inspection types do not carry `<custom_flag>='Y'`."* (source the actual flag name from the customer glossary).
+- *KPI definitions specific to the customer* (where they aren't already in Trusted UDFs) — *"Schedule compliance is computed weekly, target 95%, against PMs in the `WSCH` status at week-start."*
 - *Judgment guidance / "when in doubt..."* — *"For cost questions, first check `wo_currencycode` — POs may be in CAD, USD, or MXN; convert to base currency before aggregating."*
 - *Scope and boundaries* — *"You answer questions about work orders, PMs, labor, and HSE permits. For cost methodology or rollup, defer to the cost analyst (use `maximo-maintenance-cost`'s metric view)."*
 
@@ -196,7 +196,7 @@ Genie Space has multiple surfaces, each with a sweet spot. Use the one that fits
 | `WOCLASS='WORKORDER'`, `ISTASK=0`, `HISTORYFLAG=0` filter patterns | **Example SQL** | Genie learns these by pattern-matching against query examples in the `WHERE` clause. Repeating them as prose imperatives is redundant. |
 | `SYNONYMDOMAIN` status resolution pattern | **Example SQL** + UC comment on `STATUS` column | One canonical query shows the resolution; the column comment names the column behavior. |
 | Table-to-table joins (`WORKORDER`→`ASSET`, `WORKORDER`→`LOCATIONS` on composite `SITEID` keys) | **Joins configuration** (declarative) | Genie respects declared joins without instruction text. Declare the composite-key join once in Joins config. |
-| Synonym vocabulary (Mainline → SITEIDs, etc.) | **Business synonyms** field + glossary skill | Dedicated surface for vocabulary mappings. |
+| Synonym vocabulary (customer business terms → SITEIDs, etc.) | **Business synonyms** field + glossary skill | Dedicated surface for vocabulary mappings. |
 | Canonical metric definitions (open WO count, MTBF, PM compliance) | **Trusted Assets** (UC SQL functions) + `metric_view.yaml` measures | `MEASURE()` calls in examples teach Genie to reach for the metric view rather than reinventing. |
 | Persona / mindset / how to think | **Instructions Part A** | Only place that captures *how to think*. |
 | Semantic rules, business logic, judgment, KPI definitions, tribal knowledge, scope/boundaries, defer-to-user logic | **Instructions Part B/C** | These can't be conveyed by a single query or a declarative join. Use as much prose as needed. |
@@ -223,7 +223,7 @@ its module skill — do not redefine it here. See
 Source the questions from [benchmark.md](benchmark.md) (the starter set), then add the customer's own actual-business questions on top — those are the ones that matter most. Coverage target:
 - ≥3 questions per in-scope module (one each: simple count, breakdown, time-windowed)
 - ≥2 ambiguity-resolution questions (open-status set, criticality scheme — Genie should ask back, not guess)
-- ≥2 cross-module / hierarchical questions (e.g. "backlog at Mainline by work type") to exercise Joins config + glossary
+- ≥2 cross-module / hierarchical questions (e.g. "backlog at a specific region or asset group by work type") to exercise Joins config + glossary
 
 **Step 7b — Run + iterate.** Run the benchmark from the Space. For each miss, **diagnose what kind of miss it is** and fix on the matching surface — don't dump every fix into instructions, and don't avoid instructions when they're the right surface:
 

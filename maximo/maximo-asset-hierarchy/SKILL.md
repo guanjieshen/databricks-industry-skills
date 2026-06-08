@@ -29,7 +29,7 @@ The cross-cutting "hierarchical query" skill. Use when any other Maximo question
 
 - "Show me maintenance cost rolled up by region" (composes with `maximo-maintenance-cost`)
 - "All open work orders under compressor station 4" (composes with `maximo-work-orders`)
-- "All assets in the East Mainline process system"
+- "All assets in the North Region transmission system"
 - "What's the parent location of valve V-42?"
 - "Walk the asset class hierarchy under Rotating Equipment"
 - "How many descendant assets does location L-PLANT-1 have?"
