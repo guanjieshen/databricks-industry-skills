@@ -132,7 +132,7 @@ This is also the re-run worklist: as items are confirmed, fold them in and remov
 {{/each}}
 
 > **Column casing:** write schema identifiers in the **physical casing of the actual
-> tables** (e.g. lowercase `workorder.wo_pipeline_km` if that's how they're stored) so
+> tables** (e.g. lowercase `workorder.wo_custom_field` if that's how they're stored) so
 > generated SQL matches — don't normalize to upper/lower inconsistently.
 
 ## How to use

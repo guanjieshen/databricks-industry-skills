@@ -39,7 +39,7 @@ Key columns: `METERNAME`, `WARNLIMITLO`, `WARNLIMITHI`, `ACTIONLIMITLO`, `ACTION
 
 Append-only. Key columns: `READINGDATE`, `READING`. **Datetimes are stored in the app-server timezone (see `maximo-overview`), not per-row UTC — keep that in mind when computing year-fractions for rates.**
 
-For pressure-vessel UT readings, customers often have a separate **PCMS-like custom table** (corrosion management system) that holds the same data with more domain detail. Check the workspace glossary for `custom_tables` entries referencing `pcms_thickness_readings` or similar.
+For pressure-vessel UT readings, customers often have a separate **PCMS-like custom table** (corrosion management system) that holds the same data with more domain detail. Check the workspace glossary's `custom_tables` for a UT-thickness or corrosion-monitoring table for the customer (name varies per deployment).
 
 ### Corrosion-rate & remaining-life inputs (ST / LT, t-min)
 
@@ -61,7 +61,7 @@ Per API 510/570, corrosion is characterized by **two** rates, not one regression
 Inspection WOs are isolated by one of:
 - `WORKTYPE IN ('REG', 'INSP', 'API510', 'API570', ...)` — workspace-glossary-driven
 - `JPNUM` in a customer-specific list of inspection job plans
-- A custom column flag (`WO_REG_FLAG = 'Y'`, etc.)
+- A custom regulatory-flag column (name varies per customer — read from the workspace glossary)
 
 ### `PM` (filtered to regulatory PMs)
 

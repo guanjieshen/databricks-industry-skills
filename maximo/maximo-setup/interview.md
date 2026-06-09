@@ -40,7 +40,7 @@ Confirm `draft_profile.json → usage_profile`.
 
 Ground in `work_order.status_values` + `proposed_open_statuses`.
 
-4. **"Your data has these statuses: {list}. Walk me through the lifecycle — which count as 'open'/backlog? Which is 'work done but not financially closed' (`COMP` vs `CLOSE`)? What are the non-standard ones {e.g. WPCOND, FAPPR} in your shop?"**
+4. **"Your data has these statuses: {list}. Walk me through the lifecycle — which count as 'open'/backlog? Which is 'work done but not financially closed' (`COMP` vs `CLOSE`)? What are the non-standard ones (anything outside the stock Maximo defaults) in your shop?"**
    - → confirms `open_statuses`
 5. **"Have you renamed any status values?"** Status columns store the customer-renamable synonym (`SYNONYMDOMAIN.VALUE`), not the internal `MAXVALUE` (see maximo-overview). If the profiler's `SYNONYMDOMAIN` dump shows renamings, record the actual stored `VALUE` strings so generated SQL matches the data.
 6. **"How are statuses changed — UI, MIF/integration, or a mobile/REST app?"** Integration-driven status changes can skip `WOSTATUS` history rows — flag if so, since it breaks time-in-status (a maximo-workflow-and-approvals / overview concern).
@@ -109,9 +109,11 @@ These decide whether analytics are trustworthy at all. Ground in `stats` + null 
 The profiler seeds most of this; you confirm. Save as `answers.json` (consumed by
 `generate_glossary.py`). Same shape as before **plus** the new `industry_usage` block:
 
+Example for a fictional `Northstar Energy` deployment (shape only — substitute the customer's actual values):
+
 ```json
 {
-  "customer": "enbridge",
+  "customer": "northstar",
   "industry_usage": {
     "industry": "Midstream oil & gas (liquids + gas transmission)",
     "industry_solutions": ["Oil & Gas (PLUSG)"],
@@ -123,21 +125,21 @@ The profiler seeds most of this; you confirm. Save as `answers.json` (consumed b
     "migration_cutover": "2021-04-01 (pre-cutover WOs have null WOSTATUS history)",
     "notes": ["Capital work is WORKTYPE=CAP — exclude from maintenance cost"]
   },
-  "sites": { "Mainline": ["MAIN-E", "MAIN-W", "MAIN-C"], "Field": ["FLD-AB1", "FLD-AB2"] },
+  "sites": { "Region North": ["ZONE-N1", "ZONE-N2", "ZONE-N3"], "Region South": ["ZONE-S1", "ZONE-S2"] },
   "location_hierarchy": { "Region": "LOCHIERARCHY level 1", "Station": "LOCHIERARCHY level 2" },
   "asset_classes": { "centrifugal pump": [4521, 4522], "pressure vessel": [7100, 7101] },
   "criticality": { "critical": "ASSET.CRITICALITY = 10" },
-  "open_statuses": ["WAPPR", "APPR", "INPRG", "WSCH", "WMATL", "WPCOND"],
+  "open_statuses": ["WAPPR", "APPR", "INPRG", "WSCH", "WMATL", "<CUSTOM_OPEN_STATUS>"],
   "worktypes": { "corrective": ["CM", "EM"], "preventive": ["PM"], "capital": ["CAP"] },
   "custom_columns": {
-    "WORKORDER.WO_PIPELINE_KM": "Pipeline kilometer of the work site",
-    "WORKORDER.WO_REG_FLAG": "Y/N — does this WO satisfy a regulatory requirement"
+    "WORKORDER.WO_ROUTE_KM": "Route kilometer of the work site (example custom column)",
+    "WORKORDER.WO_REGULATORY_FLAG": "Y/N — does this WO satisfy a regulatory requirement (example)"
   },
-  "custom_tables": { "eam.maximo_silver.pcms_thickness_readings": "Joined to ASSET on assetnum; corrosion gauging" },
+  "custom_tables": { "eam.maximo_silver.inspection_readings_custom": "Joined to ASSET on assetnum; UT thickness gauging (example custom table)" },
   "regulatory_codes": ["API 510", "API 570", "CSA Z662"],
   "tribal_knowledge": ["'In service' colloquially means STATUS='INPRG', not the asset status"],
   "followups": [
-    {"question": "WPCOND meaning / is it 'open'?", "owner": "Maintenance planners"},
+    {"question": "Meaning of the custom open-status / is it 'open'?", "owner": "Maintenance planners"},
     {"question": "Official CLASSSTRUCTUREID → asset-class names", "owner": "Reliability"}
   ]
 }

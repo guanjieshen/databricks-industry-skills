@@ -86,7 +86,7 @@ The `pm_compliance` UDF in `maximo-reliability` computes SMRP — **do not use i
 There's no Maximo-universal way to say "this WO is an inspection vs operational maintenance." Customers use one of:
 - `WORKORDER.WORKTYPE` value (codes like `REG`, `INSP`, `API510`)
 - `WORKORDER.JPNUM` linked to inspection-specific job plans
-- A custom column (`WO_REG_FLAG = 'Y'`, etc.)
+- A custom regulatory-flag column on `WORKORDER` (name varies per customer — read from the workspace glossary)
 
 Always check the workspace glossary first. If no convention is defined, ASK before guessing.
 

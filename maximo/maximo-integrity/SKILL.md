@@ -57,7 +57,7 @@ These traps silently produce wrong numbers in safety-critical reporting. Read be
 
 Surface these *before* answering — there is no defensible default:
 
-1. **Inspection-work isolation.** There is no Maximo-universal "this WO is an inspection" flag. Common conventions: `WORKTYPE IN ('REG','INSP','API510','API570',…)`, a `JPNUM` subset of inspection job plans, or a custom column (`WO_REG_FLAG = 'Y'`). Resolve via workspace glossary; if undefined, ASK.
+1. **Inspection-work isolation.** There is no Maximo-universal "this WO is an inspection" flag. Common conventions: `WORKTYPE IN ('REG','INSP','API510','API570',…)`, a `JPNUM` subset of inspection job plans, or a custom regulatory-flag column (name varies per customer — read from the workspace glossary). Resolve via workspace glossary; if undefined, ASK.
 2. **Corrosion-rate basis.** Should remaining life use the **short-term** rate (two most recent readings, catches recent acceleration), the **long-term** rate (full history, trend stability), or the **more conservative** of the two? Default to the more conservative; confirm.
 3. **`t_required` / t-min source.** Where does the per-component minimum thickness come from — a custom column, `ASSETMETER` limit, or the parallel integrity system? Without it, no remaining life.
 4. **Inspection-interval policy.** Half-life principle, double-corrosion-rate principle, or a flat code-maximum ceiling? And which **regulatory regime** governs — API 510 (vessels), API 570 piping Class 1/2/3, B31.4, CSA Z662, DOT 49 CFR? Each has different maxima.

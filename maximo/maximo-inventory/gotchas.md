@@ -67,7 +67,7 @@ SELECT SUM(curbal) FROM INVBALANCES WHERE itemnum = 'ITEM-X';
 
 -- "On-hand at the West storeroom"
 SELECT SUM(curbal) FROM INVBALANCES
-WHERE itemnum = 'ITEM-X' AND location = 'MAIN-WEST';
+WHERE itemnum = 'ITEM-X' AND location = 'ZONE-W';
 ```
 
 Watch for `SITEID` too in multi-site customers — the same `LOCATION` code can

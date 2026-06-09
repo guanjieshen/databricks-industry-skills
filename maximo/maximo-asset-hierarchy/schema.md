@@ -39,7 +39,7 @@ One row per (`LOCATION`, `PARENT`, `SYSTEMID`). The same physical location can a
 
 ```sql
 SELECT location, parent FROM lochierarchy
-WHERE systemid = 'PRIMARY' AND siteid = 'MAIN-WEST';
+WHERE systemid = 'PRIMARY' AND siteid = 'ZONE-W';
 ```
 
 ## `LOCANCESTOR` — location closure table
@@ -58,13 +58,13 @@ One row per **(ancestor, descendant) pair at any depth in a system**. The IBM-ca
 SELECT la.location FROM locancestor la
 WHERE la.ancestor = 'STN-04'
   AND la.systemid = 'PRIMARY'
-  AND la.siteid   = 'MAIN-WEST';
+  AND la.siteid   = 'ZONE-W';
 
 -- All ancestors of valve 'V-42' (root chain)
 SELECT la.ancestor FROM locancestor la
 WHERE la.location = 'V-42'
   AND la.systemid = 'PRIMARY'
-  AND la.siteid   = 'MAIN-WEST';
+  AND la.siteid   = 'ZONE-W';
 ```
 
 Includes the location itself as ancestor of itself in typical Maximo installations — verify the customer's convention.
@@ -85,7 +85,7 @@ Includes the location itself as ancestor of itself in typical Maximo installatio
 ```sql
 -- All assets under pump skid PMP-SKID-7
 SELECT aa.assetnum FROM assetancestor aa
-WHERE aa.ancestor = 'PMP-SKID-7' AND aa.siteid = 'MAIN-WEST';
+WHERE aa.ancestor = 'PMP-SKID-7' AND aa.siteid = 'ZONE-W';
 ```
 
 ## `SYSTEM` — hierarchy system definitions
