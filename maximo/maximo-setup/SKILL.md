@@ -79,7 +79,7 @@ These deployment-level ambiguities have NO defensible default and decide whether
 
 ### Phase 0 — Profile the data (automated first pass)
 
-Profile the schema and extract the data-provable facts — distinct `WOCLASS`/`STATUS`/`WORKTYPE`, the `SITEID` list, `ASSET.CLASSSTRUCTUREID` list, custom/extension columns, which modules are populated, PLUSG presence, `SYNONYMDOMAIN` rows for status domains (to detect customer renamings — see [maximo-overview](../maximo-overview/) status gotcha), `HISTORYFLAG` distribution (to confirm closed/history records are present — see [maximo-overview](../maximo-overview/) HISTORYFLAG gotcha), and row/null stats — into a DRAFT for the interview. The app-server timezone is NOT data-provable; flag it for the interview (Question 3). **Pick the path that matches how Genie Code is attached** (both produce the same facts):
+Profile the schema and extract the data-provable facts — distinct `WOCLASS`/`STATUS`/`WORKTYPE`, the `SITEID` list, `ASSET.CLASSSTRUCTUREID` list, custom/extension columns, which modules are populated, PLUSG presence, `SYNONYMDOMAIN` rows for status domains (to detect customer renamings — see [maximo-overview](../maximo-overview/) status gotcha), `HISTORYFLAG` distribution (to confirm closed/history records are present — see [maximo-overview](../maximo-overview/) HISTORYFLAG gotcha), and row/null stats — into a DRAFT for the interview. The app-server timezone is NOT data-provable; flag it for the interview (Batch 6, the app-server timezone question). **Pick the path that matches how Genie Code is attached** (both produce the same facts):
 
 **Path A — workspace / serverless compute (can run Python):** run the profiler script. (It builds on the [`data-exploration`](../../_common/data-exploration/) mechanics.)
 ```bash
@@ -95,16 +95,30 @@ python scripts/introspect_schema.py \
 
 Present the findings. This turns Phase 1 from "answer 20 questions cold" into "confirm/correct what we found, and supply only what the data can't prove."
 
-### Phase 1 — Interview (confirm the gaps)
+### Phase 1 — Interview (confirm the gaps, adaptive)
 
-See [interview.md](interview.md) — run it like a Maximo implementation consultant who can already see the data. Ask in **batches of 2–3**; never dump the whole list. **Batch 0 (industry & how they use Maximo today) goes first** — it scopes everything else.
+See [interview.md](interview.md) — run it like a Maximo implementation consultant who can already see the data. The interview is **adaptive**: Q0 establishes Maximo familiarity, then every subsequent question carries a Tier (1/2/3) + Trigger (boolean over the profile + answers-so-far). Genie Code asks only the questions whose trigger evaluates true, in batches of 2–3 — never dumps the whole list.
 
-The data can't prove these — they are what the interview captures:
-- **Industry & usage** (Batch 0): industry / sub-segment, industry-solution add-ons (PLUSG…), which modules are actually used vs. another system of record, maturity, KPI definitions.
+**Q0 — Maximo familiarity is the first question.** Records `customer.maximo_familiarity` (Expert / Familiar / Limited / None). For `Limited` / `None`, the interview shows "Concepts in this batch" sidebars (suppressed for Expert/Familiar), offers skip-defer eagerly, proactively suggests looping in a maintenance SME for Batches 6/7/8, and surfaces the **Solo path** option.
+
+**Two paths** (the customer picks):
+
+| Path | Audience | Scope | Time |
+|---|---|---|---|
+| **SME-led** (default) | A maintenance / reliability SME is on the session | All triggered questions (Tier 1 + 2 + 3) | ~30 min |
+| **Solo path** | A non-Maximo DE working without a Maximo SME | **Tier 1 only**; everything else deferred to `_unknown_` with an owner | ~10 min |
+
+The Solo path is the right default for a non-Maximo DE evaluating the framework or building a first dashboard. It captures: industry + PLUSG, modules-in-scope (from the heatmap), open-status set (accept stock defaults if no obvious customizations), status synonym renamings (data-provable from `SYNONYMDOMAIN`), site list, LOCATIONS-vs-ASSET-parent default, multi-currency (if profiler detects), and app-server timezone (default UTC if no signal). Enough for the metric views, joins, and status filters in every other `maximo-*` skill to work correctly. Business-term mappings + KPI nuance + tribal knowledge stay flagged for the SME to confirm in a later re-run.
+
+**Skip-defer is always a valid answer** on either path. Skipped items → `answers.followups` with `owner: <role>`; the glossary renders `_unknown_ — confirm with <role>`. Customer is never blocked.
+
+The data can't prove these — they are what the interview captures (asked per Trigger):
+- **Industry & usage** (Batch 0): industry / sub-segment, industry-solution add-ons (PLUSG…), modules in Maximo vs another system, MAS/Manage version, maturity, KPI definitions.
 - **Meaning of the profiled values**: which `STATUS` count as "open"; the `WORKTYPE` → corrective / preventive / capital mapping.
-- **Business jargon → schema**: site names ↔ `SITEID`, asset-class names ↔ `CLASSSTRUCTUREID`, hierarchy levels, criticality, synonyms ("PTW" → Permit to Work).
+- **Business jargon → schema**: site names ↔ `SITEID`, asset-class names ↔ `CLASSSTRUCTUREID`, hierarchy levels, **criticality scheme (1-5 vs 1-10, direction, bucket boundaries)**, synonyms ("PTW" → Permit to Work).
 - **Custom columns**: what each detected extension field stores and who relies on it.
-- **Process reality**: failure-reporting completeness, labor booking, migration history, timezone — the things that decide whether a metric is trustworthy.
+- **Process reality**: failure-reporting completeness, **failure-code scheme depth** (PROBLEM / PROBLEM+CAUSE / full tree), **workflow scope + approval depth** + **signature options**, labor booking + **assignment model**, migration history, **app-server timezone** (Batch 6, app-server-timezone question).
+- **KPIs + reconciliation**: KPI definitions in customer's words, **multi-currency base + conversion rule** (Tier 1 if profiler detects >1 currency), **existing dashboards** to reconcile against.
 
 Record answers as `answers.json` (shape + the `draft_profile.json` → `answers.json` mapping are in [interview.md](interview.md)).
 

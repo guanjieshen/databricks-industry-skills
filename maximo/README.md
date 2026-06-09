@@ -19,8 +19,8 @@ Neither persona is a Maximo specialist.
 | **HSE manager** | Permits, incidents, investigations, regulatory reporting, MoC approvals | `overview`, `setup`, `data-quality`, `hse`, `workflow-and-approvals` |
 | **Finance controller** | Maintenance spend reporting, budget tracking | `overview`, `setup`, `maintenance-cost` |
 | **D&A / platform engineer** | Building pipelines, Genie Spaces, dashboards, ML on Maximo | `overview`, `setup`, `data-engineering`, plus whichever module |
-| **Procurement / sourcing analyst** | PO / PR / invoice approvals, vendor spend, three-way matching | `overview`, `setup`, `workflow-and-approvals` + `procurement` (planned) |
-| **Data scientist** | PdM models on Maximo + sensor data | `overview`, `setup`, `reliability`, plus `maximo-pdm` (v3) |
+| **Procurement / sourcing analyst** | PO / PR / invoice approvals, vendor spend, three-way matching | `overview`, `setup`, `workflow-and-approvals`, `procurement` |
+| **Data scientist** | PdM models on Maximo + sensor data | `overview`, `setup`, `reliability`, plus `maximo-pdm` (future) |
 
 ## Architecture: foundation + module
 
@@ -55,7 +55,6 @@ Discovery + quality test cases live in [`evals/`](./evals/) (`query → expected
 ### v5+ candidates (gated on customer-licensed Maximo modules or specialized use cases)
 
 - `maximo-service-desk` — TICKET / SR / INCIDENT / PROBLEM views, TKSTATUS history. **Gated on customer having Service Desk licensed.**
-- `maximo-procurement` — PR → PO → Receipt → INVOICE three-way matching, COMPANIES disqualification, CONTRACTTYPE branching. **Gated on customer having Procurement licensed.**
 - `maximo-pdm` — PdM ML patterns joining Maximo asset hierarchy + WO history with sensor / historian data. Data-scientist persona.
 - `maximo-calibration` (PLUSC) — for regulated industries (pharma, aerospace, utilities).
 - `maximo-work-orders-dashboard` — focused workflow for building an AI/BI dashboard over WO data.
