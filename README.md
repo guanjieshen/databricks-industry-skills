@@ -96,8 +96,9 @@ Currently shipped data-source families:
 | [`maximo/`](./maximo/) | Beta | Oil & gas, utilities, mining, manufacturing, federal |
 | [`pods/`](./pods/) | WIP, not ready for use | Midstream oil & gas (pipeline integrity) |
 | [`wellview/`](./wellview/) | WIP, not ready for use | Upstream oil & gas (drilling, completions, workovers, daily ops/cost) |
+| [`oracle-fusion/`](./oracle-fusion/) | WIP, not ready for use | Cross-industry ERP — Oracle Fusion Cloud Financials + Supply Chain |
 
-Only `maximo/` is at Beta and ready to try. `pods/` and `wellview/` are works in progress, so don't rely on them yet.
+Only `maximo/` is at Beta and ready to try. `pods/`, `wellview/`, and `oracle-fusion/` are works in progress, so don't rely on them yet.
 
 Planned future families (see `_template/`):
 

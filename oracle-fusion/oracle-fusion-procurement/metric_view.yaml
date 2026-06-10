@@ -1,0 +1,237 @@
+# =============================================================================
+# Oracle Fusion Procurement — Metric View (semantic layer)
+# =============================================================================
+# The governed semantic layer Genie Agents, AI/BI dashboards, and BI tools query
+# for procurement metrics. Canonical measures (lifted from metric_udfs.sql) are
+# defined ONCE here and sliceable by any dimension below. The agent metadata
+# (display_name / comment / format / synonyms) is what lets Genie discover and
+# correctly use each measure from natural language — synonyms carry the real
+# procurement vocabulary ("PO spend", "supplier spend", "PO backlog").
+#
+# *** THE THREE SPEND BASES ARE DISTINCT (gotcha 1) ***
+# ordered_amount (commitment) ≠ received_amount (goods in) ≠ billed_amount
+# (Payables-matched, PO-side). They are kept as SEPARATE measures on purpose —
+# this layer never collapses them into a single "spend". Genie must pick one.
+#
+# Source-specific content lives here; CREATE / register / refresh mechanics are
+# the platform skill's job — load `databricks-metric-views`. Registration is
+# owned by oracle-fusion-setup (preview-then-apply), not run from this skill.
+#   https://docs.databricks.com/aws/en/business-semantics/metric-views/
+#   https://docs.databricks.com/aws/en/business-semantics/agent-metadata
+#
+# Source is the GOLD distribution-grain spend view (see views.sql: v_po_spend) so
+# SUM over amount measures is correct (gotcha 2). Bind at registration: :catalog,
+# :gold_schema (where v_po_spend and this metric view live). DBR 17.3+, YAML 1.1.
+#   CREATE VIEW :catalog.:gold_schema.po_spend_metrics WITH METRICS LANGUAGE YAML AS $$ <body> $$;
+# =============================================================================
+
+version: 1.1
+source: :catalog.:gold_schema.v_po_spend
+comment: >-
+  Canonical Fusion procurement spend metrics at distribution grain, sliceable by
+  business unit, supplier, buyer, category, PO type, and date. Three DISTINCT
+  spend bases (ordered / received / billed) — never conflate (gotcha 1).
+
+# Apply the canceled-PO gotcha ONCE here (gotcha 5): canceled POs are not spend.
+# Scope by PRC_BU_ID and approved/closed status per query / dashboard as needed.
+filter: cancel_flag = 'N'
+
+# ── Dimensions ───────────────────────────────────────────────────────────────
+fields:
+  - name: business_unit
+    expr: prc_bu_id
+    display_name: Business Unit
+    comment: >-
+      Procurement business unit (PRC_BU_ID) — the multi-org scope on _ALL tables
+      (gotcha 4). Resolve the BU name via the workspace glossary.
+    synonyms:
+      - prc bu
+      - procurement bu
+      - org
+      - operating unit
+
+  - name: supplier
+    expr: supplier_name
+    display_name: Supplier
+    comment: >-
+      Supplier (POZ_SUPPLIERS via VENDOR_ID). Rolls up the supplier, not the site
+      (gotcha 7). For pay/ship-from site, slice on a site dimension instead.
+    synonyms:
+      - vendor
+      - supplier name
+      - payee
+
+  - name: buyer
+    expr: buyer_id
+    display_name: Buyer
+    comment: Buyer / procurement agent (PO_HEADERS_ALL.AGENT_ID). Resolve the buyer name via the glossary.
+    synonyms:
+      - agent
+      - purchasing agent
+      - procurement agent
+
+  - name: category
+    expr: category_id
+    display_name: Category
+    comment: Purchasing (spend) category (PO_LINES_ALL.CATEGORY_ID). Resolve the category name via the glossary.
+    synonyms:
+      - spend category
+      - commodity
+      - purchasing category
+
+  - name: po_type
+    expr: po_type
+    display_name: PO Type
+    comment: >-
+      TYPE_LOOKUP_CODE — STANDARD / BLANKET (Blanket Purchase Agreement) / CONTRACT /
+      PLANNED. BPA releases generate their own rows; don't double-count agreement +
+      releases (gotcha 6).
+    synonyms:
+      - document type
+      - order type
+      - purchase order type
+
+  - name: po_date
+    expr: po_creation_date
+    display_name: PO Date
+    comment: PO creation date (PO_HEADERS_ALL.CREATION_DATE). Confirm whether the user means created / approved / need-by / promised (gotcha 8).
+    synonyms:
+      - order date
+      - creation date
+      - po created
+    format:
+      type: date
+      date_format: year_month_day
+      leading_zeros: true
+
+# ── Measures (lifted from metric_udfs.sql; defined once, slice by any field) ──
+# The three spend bases are SEPARATE measures by design (gotcha 1).
+measures:
+  - name: ordered_amount
+    expr: SUM(ordered_amount)
+    display_name: Ordered Amount
+    comment: >-
+      ORDERED (committed) spend — QUANTITY_ORDERED × unit price at distribution grain.
+      The commitment basis (gotcha 1). NOT the same as received or billed. Entered
+      currency; normalize cross-currency via the keystone.
+    synonyms:
+      - po spend
+      - committed spend
+      - ordered spend
+      - commitment
+      - purchase order spend
+    format:
+      type: currency
+      currency_code: USD
+      decimal_places:
+        type: exact
+        places: 2
+      abbreviation: compact
+
+  - name: received_amount
+    expr: SUM(received_amount)
+    display_name: Received Amount
+    comment: >-
+      RECEIVED (goods-in) spend — QUANTITY_DELIVERED × unit price. The receiving
+      basis (gotcha 1). Distinct from ordered and billed. Entered currency.
+    synonyms:
+      - received spend
+      - goods received
+      - delivered amount
+      - grn value
+    format:
+      type: currency
+      currency_code: USD
+      decimal_places:
+        type: exact
+        places: 2
+      abbreviation: compact
+
+  - name: billed_amount
+    expr: SUM(billed_amount)
+    display_name: Billed Amount
+    comment: >-
+      BILLED (Payables-matched, PO-side) spend — AMOUNT_BILLED. The invoiced basis
+      (gotcha 1). The AP invoice itself is out of scope (P2P boundary — oracle-fusion-payables).
+      Distinct from ordered and received. Entered currency.
+    synonyms:
+      - invoiced amount
+      - billed spend
+      - matched amount
+      - invoiced spend
+    format:
+      type: currency
+      currency_code: USD
+      decimal_places:
+        type: exact
+        places: 2
+      abbreviation: compact
+
+  - name: po_count
+    expr: COUNT(DISTINCT po_header_id)
+    display_name: PO Count
+    comment: Count of distinct purchase orders (header grain) after the cancel filter.
+    synonyms:
+      - number of pos
+      - purchase order count
+      - po volume
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  - name: open_po_count
+    expr: COUNT(DISTINCT CASE WHEN approved_flag = 'Y' AND COALESCE(closed_code, 'OPEN') NOT IN ('CLOSED', 'FINALLY CLOSED') AND quantity_delivered < quantity_ordered THEN po_header_id END)
+    display_name: Open PO Count
+    comment: >-
+      Open backlog — distinct approved, non-canceled, not-finally-closed POs with an
+      open commitment (delivered < ordered). Mirrors the open_po_count Trusted UDF
+      (gotcha 5).
+    synonyms:
+      - po backlog
+      - open purchase orders
+      - purchase order backlog
+      - open pos
+    format:
+      type: number
+      decimal_places:
+        type: all
+
+  # Composable — share of ordered spend that has been received. Reuses the measures
+  # above (no duplication). A low rate flags open commitments / late delivery.
+  - name: received_rate
+    expr: MEASURE(received_amount) / MEASURE(ordered_amount)
+    display_name: Received Rate
+    comment: >-
+      Composable — received_amount / ordered_amount. Share of committed spend that has
+      been received. Reuses the base measures; does not re-aggregate.
+    synonyms:
+      - receipt rate
+      - fulfillment rate
+      - percent received
+    format:
+      type: percentage
+      decimal_places:
+        type: exact
+        places: 1
+
+  # Advanced: 90-day trailing ordered spend (window measure).
+  - name: t90d_ordered_amount
+    expr: SUM(ordered_amount)
+    display_name: Ordered Amount (90-day trailing)
+    comment: Rolling 90-day committed (ordered) spend, ordered by PO date.
+    synonyms:
+      - trailing ordered spend
+      - ordered last 90 days
+      - rolling po spend
+    format:
+      type: currency
+      currency_code: USD
+      decimal_places:
+        type: exact
+        places: 2
+      abbreviation: compact
+    window:
+      - order: po_date
+        range: trailing 90 day
+        semiadditive: last

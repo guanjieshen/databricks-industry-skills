@@ -1,0 +1,30 @@
+{
+  "GL_JE_HEADERS": {
+    "table_comment": "Oracle Fusion GL journal header (canonical EBS-style name). One row per journal entry header within a batch (GL_JE_BATCHES -> GL_JE_HEADERS -> GL_JE_LINES). Scoped by LEDGER_ID. Trial balance and financials use POSTED journals only (STATUS = 'P'). NOTE: under BICC/FDI the physical object is named differently (e.g. JournalSourceExtractPVO) — see the <customer>-oracle-fusion-glossary physical->canonical mapping.",
+    "columns": {
+      "JE_HEADER_ID": "Primary key of the journal header. Join target for GL_JE_LINES.JE_HEADER_ID.",
+      "LEDGER_ID": "FK to GL_LEDGERS. Always scope GL queries by ledger — different ledgers have different currency/calendar/COA.",
+      "JE_BATCH_ID": "FK to GL_JE_BATCHES (the posting batch this header belongs to).",
+      "PERIOD_NAME": "Accounting period (FK to GL_PERIODS). Drives the books, not the entry date. Sort by effective period number, never alphabetically by this string.",
+      "STATUS": "Posting status. 'P' = posted, 'U' = unposted. Trial balance / actuals use posted only.",
+      "ACTUAL_FLAG": "'A' = actual, 'B' = budget, 'E' = encumbrance. Filter to 'A' for actuals.",
+      "JE_SOURCE": "Originating source (Manual, Payables, Receivables, Cost Management...). Subledger sources roll up from XLA — don't double-count against XLA detail.",
+      "JE_CATEGORY": "Journal category (Adjustment, Accrual, Reversal...).",
+      "CURRENCY_CODE": "Document (entered) currency of the journal. Never sum ENTERED amounts across differing CURRENCY_CODE values; use accounted amounts on the lines."
+    }
+  },
+  "PO_HEADERS_ALL": {
+    "table_comment": "Oracle Fusion purchase-order header (canonical EBS-style name). The _ALL suffix means MULTI-ORG: holds every business unit's POs — always scope by PRC_BU_ID. One row per PO. Don't count CANCEL_FLAG = 'Y' rows as spend. NOTE: under BICC/FDI the physical object is named differently (e.g. PurchaseOrderHeaderExtractPVO) — see the <customer>-oracle-fusion-glossary physical->canonical mapping.",
+    "columns": {
+      "PO_HEADER_ID": "Primary key of the PO header. Join target for PO_LINES_ALL.PO_HEADER_ID.",
+      "PRC_BU_ID": "Procurement business unit (Fusion BU approx. EBS Operating Unit). REQUIRED scope filter — summing without it mixes orgs across the _ALL table.",
+      "SEGMENT1": "The human-readable PO number (document number), not a COA segment. Distinct from GL_CODE_COMBINATIONS.SEGMENT1.",
+      "TYPE_LOOKUP_CODE": "PO type: STANDARD / BLANKET (BPA) / CONTRACT / PLANNED.",
+      "VENDOR_ID": "FK to POZ_SUPPLIERS (supplier master).",
+      "VENDOR_SITE_ID": "FK to the supplier site.",
+      "CANCEL_FLAG": "'Y' = canceled. Exclude from spend metrics.",
+      "CLOSED_CODE": "Close status (OPEN / CLOSED / FINALLY CLOSED). Respect when computing open commitments.",
+      "CURRENCY_CODE": "Document currency. Convert via GL_DAILY_RATES before summing across currencies."
+    }
+  }
+}

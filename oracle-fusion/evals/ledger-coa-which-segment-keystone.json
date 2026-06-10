@@ -1,0 +1,14 @@
+{
+  "query": "which segment in our chart of accounts is the cost center?",
+  "expected_skill": "oracle-fusion-ledger-coa",
+  "expected_behavior": [
+    "Loads oracle-fusion-ledger-coa (KEYSTONE) with oracle-fusion-overview as parent",
+    "States that segment meaning (which SEGMENT1..30 is company / cost center / natural account) is per-tenant customer configuration, not a fixed convention",
+    "Resolves it via the segment->meaning map in the <customer>-oracle-fusion-glossary produced by oracle-fusion-setup, or offers to run setup if the map is missing",
+    "Explains accounts are stored as CODE_COMBINATION_ID (CCID) and decoded via v_code_combination / decode_ccid_segments"
+  ],
+  "anti_behavior": [
+    "Does NOT answer with a hard-coded segment position (e.g. 'SEGMENT2 is cost center')",
+    "Does NOT assume a default chart-of-accounts structure"
+  ]
+}

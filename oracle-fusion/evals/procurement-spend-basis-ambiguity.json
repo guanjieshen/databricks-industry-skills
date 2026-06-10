@@ -1,0 +1,16 @@
+{
+  "query": "how much did we spend this year?",
+  "expected_skill": "oracle-fusion-procurement",
+  "expected_behavior": [
+    "Loads oracle-fusion-procurement with oracle-fusion-overview as parent",
+    "Surfaces the spend-definition ambiguity BEFORE answering: ordered (PO amount) vs received (QUANTITY_RECEIVED) vs invoiced (QUANTITY_BILLED)",
+    "Surfaces the scope question: which business unit(s) / ledger, since _ALL tables are multi-org",
+    "Notes canceled/closed POs are excluded and asks which date basis applies",
+    "Does NOT silently pick a spend basis and return one number"
+  ],
+  "anti_behavior": [
+    "Does NOT produce an unscoped multi-org sum across all business units",
+    "Does NOT silently default to one of ordered/received/invoiced",
+    "Does NOT include canceled POs"
+  ]
+}

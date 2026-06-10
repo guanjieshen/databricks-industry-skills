@@ -1,0 +1,16 @@
+{
+  "query": "show me invoiced spend by supplier for our manufacturing business unit last quarter",
+  "expected_skill": "oracle-fusion-procurement",
+  "expected_behavior": [
+    "Loads oracle-fusion-procurement with oracle-fusion-overview as parent",
+    "Scopes the _ALL tables by business unit (PRC_BU_ID) for the manufacturing BU",
+    "Rolls up by supplier via POZ_SUPPLIERS (VENDOR_ID), using the invoiced spend basis as stated",
+    "Excludes canceled / closed POs (CANCEL_FLAG, CLOSED_CODE) from spend",
+    "Composes the keystone for accounted-currency normalization"
+  ],
+  "anti_behavior": [
+    "Does NOT sum across business units without a BU scope",
+    "Does NOT count canceled POs as spend",
+    "Does NOT silently switch the spend basis (ordered/received) from the requested invoiced basis"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "query": "we just landed our Oracle Fusion ERP data in Databricks — how is it structured and what should I watch out for?",
+  "expected_skill": "oracle-fusion-overview",
+  "expected_behavior": [
+    "Loads oracle-fusion-overview as the foundation skill",
+    "Explains the Ledger / Legal-Entity / Business-Unit org model and the subledger->GL bridge",
+    "States the landing-agnostic rule: BICC PVO / FDI physical names vary; the canonical model is fixed and the glossary maps them",
+    "Surfaces the universal gotchas (multi-org _ALL scoping, CCID segments are customer config, accounting vs transaction date, period open/close, entered vs accounted currency, GL<->XLA double-count, posted-vs-unposted)",
+    "Offers to run oracle-fusion-setup to build the glossary and segment map"
+  ],
+  "anti_behavior": [
+    "Does NOT promise direct JDBC/ODBC access to live Fusion tables (it is SaaS)",
+    "Does NOT hard-code a physical table name without referencing the glossary"
+  ]
+}
